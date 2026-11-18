@@ -118,10 +118,7 @@ export function HistoryWindow({ project, working, mark, load, close, commitMode,
       let base = await loadCachedRevision(projectId, expected);
       if (!base && !(await hasUncommittedChanges(project, working)))
         throw new Error('譜面に変更がありません。');
-      if (!base) {
-        base = await readRevision(projectId, expected);
-        await cacheRevision(working, base);
-      }
+      if (!base) base = await readRevision(projectId, expected);
       const changes = scoreChanges(base, project);
       if (!Object.keys(changes).length) throw new Error('譜面に変更がありません。');
       const result = await writeHistory(projectId, {
