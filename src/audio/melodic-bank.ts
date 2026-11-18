@@ -66,10 +66,7 @@ export function createMelodicBank<T>(
       const selected = [
         ...new Set(notes.map((note) => regions[Math.min(87, Math.max(0, note - 21))]!)),
       ];
-      const first = bank(selected, 'high');
-      // Give the first note the connection before queued samples compete for bandwidth.
-      void first.then(load).catch(() => {});
-      return first;
+      return bank(selected, 'high');
     },
   };
 }

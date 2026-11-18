@@ -82,6 +82,7 @@ await test('最初の試聴は演奏するサンプルだけで準備でき、�
   const bank = createMelodicBank(4, (sample) => Promise.resolve(sample.byteLength));
   const audition = await bank.audition([60]);
   assert.deepEqual([...audition.buffers.keys()], ['C4']);
+  assert.deepEqual([...requested.keys()], ['C4.mp3']);
   const complete = bank.load();
   unblock();
   const score = await complete;
