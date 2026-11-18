@@ -1326,6 +1326,59 @@ void test('和声技法は対象区間を保持し、次の和音の属七を選
   assert.equal(patch.duration, undefined);
 });
 
+void test('キーの境をまたいで同じ音で鳴る共通和音を提示する', async () => {
+  const { connectionChords, nextHarmonyKey } = await import('../src/core/harmony-techniques.ts');
+  const project = createBlankProject();
+  const section = project.sections[0]!;
+  const track = createTrack('chords');
+  project.tracks.push(track);
+  section.chords = makeChords(PROGRESSIONS[0]!, section.length).slice(0, 1);
+  const chord = section.chords[0]!;
+  const target = { ...project.initialKey, tonic: 7 };
+  project.keyChanges = [
+    { id: 'same', at: { sectionId: section.id, tick: PPQ / 2 }, key },
+    { id: 'next', at: { sectionId: section.id, tick: PPQ }, key: target },
+  ];
+
+  const keys = timeline(project).keys;
+  const destination = nextHarmonyKey(keys, chord.at)!;
+  assert.equal(destination.tonic, 7);
+  const result = connectionChords(key, destination)!;
+  assert.deepEqual(
+    result.common.map((patch) => [resolvePitch(patch.root, key) % 12, patch.quality]),
+    [
+      [0, 'major'],
+      [4, 'minor'],
+      [7, 'major'],
+      [9, 'minor'],
+    ],
+  );
+  Object.assign(chord, result.common[3]);
+  const song = compile(project);
+  for (const tick of [0, PPQ])
+    assert.deepEqual(
+      song.notes
+        .filter((note) => note.trackId === track.id && note.start === tick)
+        .map((note) => note.pitch % 12)
+        .sort((a, b) => a - b),
+      [0, 4, 9],
+    );
+  assert.deepEqual(song.keys, keys);
+  assert.equal(nextHarmonyKey(keys, PPQ), undefined);
+});
+
+void test('共通和音のない半音上の調には移行先の属七を提示する', async () => {
+  const { connectionChords } = await import('../src/core/harmony-techniques.ts');
+  const target = { ...key, tonic: 1, preferFlats: true };
+  const result = connectionChords(key, target)!;
+  assert.deepEqual(result.common, []);
+  const chord = { ...scoreFixture().sections[0]!.chords[0]!, ...result.dominant };
+  assert.deepEqual(
+    chordPitches(chord, target).map((midi) => midi % 12),
+    [8, 0, 3, 6],
+  );
+});
+
 void test('ハモリは調に沿って3度上または6度下を割り当てる', async () => {
   const { harmonize } = await import('../src/core/harmonize.ts');
   const key = { tonic: 0, mode: 'major', preferFlats: false } as const;

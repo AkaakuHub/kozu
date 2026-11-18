@@ -1,4 +1,5 @@
-import { changeHarmony, harmonyTechniques } from '../core/harmony-techniques.ts';
+import { changeHarmony, harmonyTechniques, nextHarmonyKey } from '../core/harmony-techniques.ts';
+import type { HarmonyTechnique } from '../core/harmony-techniques.ts';
 import { useState } from 'react';
 import {
   Box,
@@ -12,7 +13,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import type { Chord, ChordQuality, Degree, Project, Section } from '../core/types.ts';
+import type { Chord, ChordQuality, Degree, KeyPoint, Section } from '../core/types.ts';
 import { PPQ, uid } from '../core/types.ts';
 import {
   CHORDS,
@@ -24,19 +25,30 @@ import {
   pitchName,
   resolvePitch,
 } from '../core/theory.ts';
-import { keyAt } from '../core/time.ts';
+import { valueAt } from '../core/time.ts';
 import { makeChords, PROGRESSIONS } from '../core/presets.ts';
 import { Fields, NumberField, Panel } from './shared.tsx';
+import { ConnectionChordPicker } from './ConnectionChordPicker.tsx';
 interface Props {
-  project: Project;
   section: Section;
+  start: number;
+  keys: KeyPoint[];
   change: (update: (s: Section) => void) => void;
 }
-export function Harmony({ project, section, change }: Props) {
+export function Harmony({ section, start, keys, change }: Props) {
   const [preset, setPreset] = useState('royal'),
     [selected, setSelected] = useState('');
+  const [pickingConnection, setPickingConnection] = useState(false);
   const chord = section.chords.find((c) => c.id === selected) ?? section.chords[0];
-  const k = keyAt(project, { sectionId: section.id, tick: chord?.at ?? 0 });
+  const keyAt = (tick: number) => valueAt(keys, start + tick).key;
+  const k = keyAt(chord?.at ?? 0);
+  const options = chord
+    ? (Object.keys(harmonyTechniques) as HarmonyTechnique[]).map((technique) => ({
+        id: technique,
+        label: harmonyTechniques[technique],
+        patch: changeHarmony(section.chords, chord.id, technique, keyAt),
+      }))
+    : [];
   const update = (values: Partial<Chord>) => {
     if (chord)
       change((s) => {
@@ -93,7 +105,7 @@ export function Harmony({ project, section, change }: Props) {
                   {i + 1} · {(c.at / PPQ + 1).toFixed(c.at % PPQ ? 2 : 0)}拍目
                 </Typography>
                 <Typography fontWeight={700} fontSize={18}>
-                  {chordName(c, keyAt(project, { sectionId: section.id, tick: c.at }))}
+                  {chordName(c, keyAt(c.at))}
                 </Typography>
                 <Typography variant="caption">{c.duration / PPQ}拍</Typography>
               </Button>
@@ -172,33 +184,31 @@ export function Harmony({ project, section, change }: Props) {
               label="和声の技法"
               value=""
               onChange={(event) => {
-                const technique = Object.keys(harmonyTechniques).find(
-                  (value) => value === event.target.value,
-                ) as keyof typeof harmonyTechniques | undefined;
-                if (!technique) return;
-                const patch = changeHarmony(section.chords, chord.id, technique, (tick) =>
-                  keyAt(project, { sectionId: section.id, tick }),
-                );
+                if (event.target.value === 'connection') {
+                  setPickingConnection(true);
+                  return;
+                }
+                const patch = options.find((option) => option.id === event.target.value)?.patch;
                 if (patch) update(patch);
               }}
             >
-              {(Object.keys(harmonyTechniques) as (keyof typeof harmonyTechniques)[]).map(
-                (technique) => (
-                  <MenuItem
-                    key={technique}
-                    value={technique}
-                    disabled={
-                      (technique === 'secondary' || technique === 'cliche') &&
-                      !changeHarmony(section.chords, chord.id, technique, (tick) =>
-                        keyAt(project, { sectionId: section.id, tick }),
-                      )
-                    }
-                  >
-                    {harmonyTechniques[technique]}
-                  </MenuItem>
-                ),
-              )}
+              {options.map(({ id, label, patch }) => (
+                <MenuItem key={id} value={id} disabled={!patch}>
+                  {label}
+                </MenuItem>
+              ))}
+              <MenuItem value="connection">接続和音</MenuItem>
             </TextField>
+            {pickingConnection && (
+              <ConnectionChordPicker
+                key={chord.id}
+                chord={chord}
+                current={k}
+                destination={nextHarmonyKey(keys, start + chord.at) ?? k}
+                close={() => setPickingConnection(false)}
+                apply={update}
+              />
+            )}
             <TextField
               select
               fullWidth

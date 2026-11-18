@@ -198,7 +198,12 @@ export function Windows({
                 />
               )}
               {view === 'harmony' && (
-                <Harmony project={project} section={section} change={changeSection} />
+                <Harmony
+                  section={section}
+                  start={sectionStart}
+                  keys={timeline(project).keys}
+                  change={changeSection}
+                />
               )}
               {view === 'tracks' && (
                 <Tracks
