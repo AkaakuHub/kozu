@@ -66,6 +66,31 @@ const noErrors = (p: ReturnType<typeof simple>) =>
   );
 await test('空の新規プロジェクトは編集可能な譜面として有効', () => noErrors(createBlankProject()));
 
+await test('最初の試聴は演奏するサンプルだけで準備でき、再生は重複取得せず全音域を読み込む', async (context) => {
+  const { createMelodicBank } = await import('../src/audio/melodic-bank.ts');
+  const requested = new Map<string, number>();
+  let unblock: () => void = () => {};
+  const remaining = new Promise<void>((resolve) => {
+    unblock = resolve;
+  });
+  context.mock.method(globalThis, 'fetch', async (input: string, init: RequestInit) => {
+    const sample = new URL(input).pathname.split('/').at(-1)!;
+    requested.set(sample, (requested.get(sample) ?? 0) + 1);
+    if (init.priority !== 'high') await remaining;
+    return new Response(new Uint8Array([1, 2, 3]));
+  });
+  const bank = createMelodicBank(4, (sample) => Promise.resolve(sample.byteLength));
+  const audition = await bank.audition([60]);
+  assert.deepEqual([...audition.buffers.keys()], ['C4']);
+  const complete = bank.load();
+  unblock();
+  const score = await complete;
+  assert.equal(score.buffers.size, 88);
+  assert.equal(requested.size, 88);
+  assert.ok([...requested.values()].every((count) => count === 1));
+  assert.equal(await bank.audition([64]), score);
+});
+
 await test('履歴は指定した版とその親の差分を適用し、削除した音符や別ブランチの変更を読み込まない', async () => {
   const { DatabaseSync } = await import('node:sqlite');
   const { revisionQuery } = await import('../src/worker/history/revision-query.ts');

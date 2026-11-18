@@ -1,9 +1,9 @@
 import type { Smplr } from 'smplr';
 import type { Track } from '../core/types.ts';
-import { loadInstrument, previewNotes, previewVoice } from './instruments.ts';
+import { auditionInstrument, previewNotes, previewVoice, sampleBank } from './instruments.ts';
 
 export class Audition {
-  private current: { voice: ReturnType<typeof previewVoice>; audio: Smplr } | null = null;
+  private current: { bank: Awaited<ReturnType<typeof sampleBank>>; audio: Smplr } | null = null;
   private request = 0;
 
   constructor(
@@ -16,25 +16,23 @@ export class Audition {
     const notes = previewNotes(track, pitch);
     this.current?.audio.stop();
     if (!notes.length) return;
-    const voice = previewVoice(track);
-    if (this.current?.voice !== voice) {
-      this.current?.audio.dispose();
-      this.current = {
-        voice,
-        audio: loadInstrument(this.context, this.output, voice),
-      };
-    }
-    const { audio } = this.current;
     try {
+      const bank = await sampleBank(this.context, previewVoice(track), notes);
+      if (request !== this.request) return;
+      if (this.current?.bank !== bank) {
+        this.current?.audio.dispose();
+        this.current = { bank, audio: auditionInstrument(this.context, this.output, bank) };
+      }
+      const { audio } = this.current;
       await audio.ready;
+      if (request !== this.request) return;
+      for (const note of notes)
+        audio.start({ note, velocity: 88, ...(track.kind === 'drums' ? {} : { duration: 0.22 }) });
     } catch {
       if (request !== this.request) return;
       this.stop();
       throw new Error('試聴音源を読み込めませんでした。');
     }
-    if (request !== this.request) return;
-    for (const note of notes)
-      audio.start({ note, velocity: 88, ...(track.kind === 'drums' ? {} : { duration: 0.22 }) });
   }
 
   stop() {
