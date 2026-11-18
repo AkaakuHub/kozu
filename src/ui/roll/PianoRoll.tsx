@@ -1,14 +1,22 @@
 import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent, RefObject } from 'react';
 import { useRollGestures } from './useRollGestures.ts';
+import { RollRuler } from './RollRuler.tsx';
 import { RollTools } from './RollTools.tsx';
 import { ScaleGuide } from './ScaleGuide.tsx';
 import type { RollTool } from './RollTools.tsx';
-import { PPQ } from '../../core/types.ts';
+import { clone, PPQ } from '../../core/types.ts';
 import type { CompiledSong, Note, Project, Section, Track } from '../../core/types.ts';
-import { chordName, inScale, pitchName, resolvePitch } from '../../core/theory.ts';
+import { inScale, pitchName, resolvePitch } from '../../core/theory.ts';
 import { valueAt } from '../../core/time.ts';
-import { sectionLimit } from '../../core/section-length.ts';
+import {
+  autoClip,
+  editTrackNotes,
+  rollSection,
+  rollSectionEnd,
+  trackNotes,
+} from '../../core/roll-timeline.ts';
+import type { RollNote } from '../../core/roll-timeline.ts';
 import {
   drawnNoteSpan,
   makeNote,
@@ -23,7 +31,7 @@ const NoteDialog = lazy(() =>
 import './roll.css';
 
 const row = 22;
-const ruler = 54;
+const ruler = 72;
 const keyboard = 52;
 const shades = ['#71e3c3', '#b1a8ff', '#ffc17d', '#8ebeff', '#ff9dbb'];
 
@@ -33,7 +41,7 @@ interface Props {
   track: Track;
   mode: 'light' | 'dark';
   start: number;
-  sectionMeasure: number;
+  starts: Map<string, number>;
   song: CompiledSong;
   scaleGuide: boolean;
   audition: ((pitch: number) => void) | undefined;
@@ -48,6 +56,7 @@ interface Props {
   editTempo: (tick: number) => void;
   generateMelody: () => void;
   change: (update: (s: Section, p: Project) => void) => void;
+  commit: (project: Project) => void;
 }
 
 interface Drag {
@@ -68,7 +77,7 @@ export function PianoRoll({
   track,
   mode,
   start,
-  sectionMeasure,
+  starts,
   song,
   scaleGuide,
   audition,
@@ -83,6 +92,7 @@ export function PianoRoll({
   editTempo,
   generateMelody: openMelody,
   change,
+  commit,
 }: Props) {
   const [selected, select] = useState<string[]>([]);
   const [detail, setDetail] = useState(false);
@@ -96,7 +106,13 @@ export function PianoRoll({
   const follow = useRef(true);
   const [range, setRange] = useState({ first: 0, last: PPQ * 24 });
   const drag = useRef<Drag | null>(null);
-  const drawing = useRef<{ pointer: number; anchor: number; midi: number } | null>(null);
+  const drawing = useRef<{
+    pointer: number;
+    anchor: number;
+    start: number;
+    end: number;
+    midi: number;
+  } | null>(null);
   const [draftNote, setDraftNote] = useState<{ at: number; duration: number; midi: number } | null>(
     null,
   );
@@ -106,37 +122,60 @@ export function PianoRoll({
     setDraftNote(null);
     setDelta({ ticks: 0, pitches: 0 });
   });
-  const notes = section.notes[track.id] ?? [];
-  const auto = track.kind !== 'melody' && !Object.hasOwn(section.notes, track.id);
+  const notes = useMemo(() => trackNotes(project, track.id, starts), [project, track.id, starts]);
+  const selectedIds = useMemo(() => new Set(selected), [selected]);
+  const auto = autoClip(section, track);
   const selectedNote = notes.find((n) => n.id === selected.at(-1));
-  const keyFor = (at: number) => valueAt(song.keys, start + Math.min(section.length - 1, at)).key;
+  const keyFor = (at: number) => valueAt(song.keys, at).key;
   const pitchOf = (note: Note) => resolvePitch(note.pitch, keyFor(note.at));
-  const editable = song.keys.length > 0 && !auto;
+  const editable = song.keys.length > 0;
   const px = zoom / PPQ;
-  const editLimit =
-    section.autoExtend && editable
-      ? Math.min(sectionLimit, section.length + sectionMeasure)
-      : section.length;
+  const last = project.sections.at(-1)!;
+  const total = starts.get(last.id)! + last.length;
+  const endOf = (section: Section) =>
+    autoClip(section, track)
+      ? starts.get(section.id)! + section.length
+      : rollSectionEnd(starts, section, song.meters);
+  const editLimit = endOf(last);
   const width = Math.max(1, editLimit * px);
-  const position = playhead - start;
+  const position = playhead;
   const guideKey =
     scaleGuide && track.kind !== 'drums' && song.keys.length > 0
-      ? keyFor(Math.max(0, Math.min(section.length - 1, position)))
+      ? keyFor(Math.max(0, Math.min(total - 1, position)))
       : null;
   const color = shades[project.tracks.indexOf(track) % shades.length];
-  const local = useMemo(
-    () => song.notes.filter((n) => n.start >= start && n.start < start + section.length),
-    [song.notes, start, section.length],
+  const chords = useMemo(
+    () =>
+      project.sections.flatMap((part) =>
+        part.chords.map((chord) => ({
+          ...chord,
+          sectionId: part.id,
+          at: starts.get(part.id)! + chord.at,
+        })),
+      ),
+    [project.sections, starts],
   );
-  const chords = section.chords;
-  const center = local.find((n) => n.trackId === track.id)?.pitch ?? (track.octave + 1) * 12;
+  const visibleChords = useMemo(
+    () =>
+      chords.filter((chord) => chord.at + chord.duration > range.first && chord.at < range.last),
+    [chords, range],
+  );
+  const center = song.notes.find((n) => n.trackId === track.id)?.pitch ?? (track.octave + 1) * 12;
 
   useLayoutEffect(() => {
     const view = viewport.current;
     if (view) view.scrollTop = Math.max(0, (127 - center) * row - view.clientHeight / 2);
     select([]);
     setDetail(false);
-  }, [section.id, track.id]);
+  }, [track.id]);
+
+  useLayoutEffect(() => {
+    const view = viewport.current;
+    if (!view || playing) return;
+    const left = cursorTick.current * px;
+    if (left < view.scrollLeft || left >= view.scrollLeft + view.clientWidth - keyboard)
+      view.scrollLeft = start * px;
+  }, [section.id]);
 
   useLayoutEffect(() => {
     const view = viewport.current;
@@ -173,15 +212,15 @@ export function PianoRoll({
       const view = viewport.current;
       const marker = cursor.current;
       if (!view || !marker) return;
-      const at = tick - start;
+      const at = tick;
       const x = at * px;
-      marker.style.visibility = at < 0 || at > section.length ? 'hidden' : 'visible';
+      marker.style.visibility = at < 0 || at > total ? 'hidden' : 'visible';
       marker.style.transform = `translateX(${x}px)`;
       if (
         playing &&
         follow.current &&
         at >= 0 &&
-        at < section.length &&
+        at < total &&
         (x > view.scrollLeft + view.clientWidth - keyboard - 24 || x < view.scrollLeft)
       )
         view.scrollLeft = Math.max(0, x - 48);
@@ -191,25 +230,42 @@ export function PianoRoll({
     return () => {
       if (cursorFrame.current === frame) cursorFrame.current = null;
     };
-  }, [cursorFrame, cursorTick, px, section.length, start, playing, playhead]);
+  }, [cursorFrame, cursorTick, px, total, playing, playhead]);
 
-  const patchNotes = (transform: (note: Note) => Partial<Note>) => {
-    change((s) => {
-      s.notes[track.id] = notes.map((note) =>
-        selected.includes(note.id)
-          ? { ...note, ...transform(note), origin: 'manual', locked: true }
-          : note,
-      );
-    });
+  const selectedNotes = () => notes.filter((note) => selectedIds.has(note.id));
+  const apply = (removed: RollNote[], inserted: Note[]) => {
+    if (!removed.length && !inserted.length) return;
+    const next = clone(project);
+    const selection = editTrackNotes(next, track, removed, inserted);
+    if (!selection) {
+      notify('音符がセクションに収まりません。自動伴奏を編集する場合は先に展開してください。');
+      return;
+    }
+    commit(next);
+    select(selection);
+  };
+  const patchNotes = (transform: (note: RollNote) => Partial<Note> | undefined) => {
+    const removed = [],
+      inserted = [];
+    for (const note of selectedNotes()) {
+      const patch = transform(note);
+      if (!patch) continue;
+      const { sectionId: _sectionId, noteId, ...data } = note;
+      removed.push(note);
+      inserted.push({
+        ...data,
+        ...patch,
+        id: noteId,
+        origin: 'manual' as const,
+        locked: patch.locked ?? true,
+      });
+    }
+    apply(removed, inserted);
   };
   const remove = () => {
-    change((s) => {
-      s.notes[track.id] = notes.filter((n) => !selected.includes(n.id));
-    });
-    select([]);
+    apply(selectedNotes(), []);
     setDetail(false);
   };
-  const selectedNotes = () => notes.filter((note) => selected.includes(note.id));
   const copy = () => copyNotes(copyPhrase(selectedNotes(), keyFor));
   const stamp = (group: Note[], at: number) => {
     const placed = placePhrase(group, at, editLimit);
@@ -217,10 +273,7 @@ export function PianoRoll({
       if (group.length) notify('貼り付け先のパートに音符が収まりません。');
       return;
     }
-    change((section) => {
-      section.notes[track.id] = [...notes, ...placed];
-    });
-    select(placed.map((note) => note.id));
+    apply([], placed);
   };
   const duplicate = () => {
     const group = selectedNotes();
@@ -233,7 +286,7 @@ export function PianoRoll({
   const paste = () => stamp(clipboard, Math.max(0, snap(position, step)));
   const moveSelected = (ticks: number, pitches: number, preview = true) => {
     if (!ticks && !pitches) return;
-    const group = notes.filter((n) => selected.includes(n.id));
+    const group = selectedNotes();
     const midi = (n: Note) => resolvePitch(n.pitch, keyFor(n.at));
     const boundedTicks = Math.min(
       ...group.map((n) => editLimit - n.at - n.duration),
@@ -332,11 +385,16 @@ export function PianoRoll({
       return;
     viewport.current?.focus({ preventScroll: true });
     const rect = e.currentTarget.getBoundingClientRect();
-    const at = Math.floor((e.clientX - rect.left) / (px * step)) * step;
+    const tick = Math.floor((e.clientX - rect.left) / px);
+    const part = rollSection(project, starts, tick);
+    if (!part || autoClip(part, track)) return;
+    const start = starts.get(part.id)!;
+    const end = part === last ? editLimit : start + part.length;
+    const at = start + Math.floor((tick - start) / step) * step;
     const midi = 127 - Math.floor((e.clientY - rect.top) / row);
-    if (at < 0 || at >= editLimit || midi < 0 || midi > 127) return;
-    drawing.current = { pointer: e.pointerId, anchor: at, midi };
-    setDraftNote({ at, duration: Math.min(step, editLimit - at), midi });
+    if (at >= end || midi < 0 || midi > 127) return;
+    drawing.current = { pointer: e.pointerId, anchor: at, start, end, midi };
+    setDraftNote({ at, duration: Math.min(step, end - at), midi });
     e.currentTarget.setPointerCapture(e.pointerId);
     audition?.(midi);
   };
@@ -344,10 +402,13 @@ export function PianoRoll({
     const drawingNote = drawing.current;
     if (!drawingNote || drawingNote.pointer !== event.pointerId) return null;
     const tick = (event.clientX - event.currentTarget.getBoundingClientRect().left) / px;
-    return {
-      ...drawnNoteSpan(drawingNote.anchor, tick, step, editLimit),
-      midi: drawingNote.midi,
-    };
+    const span = drawnNoteSpan(
+      drawingNote.anchor - drawingNote.start,
+      tick - drawingNote.start,
+      step,
+      drawingNote.end - drawingNote.start,
+    );
+    return { ...span, at: span.at + drawingNote.start, midi: drawingNote.midi };
   };
   const cancelDrawing = () => {
     if (!drawing.current) return;
@@ -359,10 +420,7 @@ export function PianoRoll({
     if (!draft) return;
     cancelDrawing();
     const note = makeNote(draft.at, draft.duration, draft.midi);
-    change((s) => {
-      s.notes[track.id] = [...notes, note];
-    });
-    select([note.id]);
+    apply([], [note]);
   };
 
   return (
@@ -384,12 +442,7 @@ export function PianoRoll({
         selectAll={() => select(notes.map((note) => note.id))}
         quantize={() =>
           patchNotes((note) =>
-            moveNote(
-              note,
-              { at: snap(note.at, step), midi: pitchOf(note) },
-              section.length,
-              keyFor,
-            ),
+            moveNote(note, { at: snap(note.at, step), midi: pitchOf(note) }, editLimit, keyFor),
           )
         }
         step={step}
@@ -405,13 +458,18 @@ export function PianoRoll({
           }
           if (auto) setTool('select');
           else if (
-            notes.length &&
+            section.notes[track.id]?.length &&
             !window.confirm('このセクションの編集済みの音符を自動伴奏に置き換えますか？')
           )
             return;
           change((section) => {
             if (auto)
-              section.notes[track.id] = materializeNotes(local, track.id, start, section.length);
+              section.notes[track.id] = materializeNotes(
+                song.notes,
+                track.id,
+                start,
+                section.length,
+              );
             else delete section.notes[track.id];
           });
         }}
@@ -428,68 +486,22 @@ export function PianoRoll({
           className="roll-content"
           style={{ width: width + keyboard, height: 128 * row + ruler }}
         >
-          <div className="roll-ruler" style={{ width: width + keyboard }}>
-            <span className="roll-corner">MIDI</span>
-            <div
-              className="roll-time"
-              style={{ width }}
-              onClick={(e) => {
-                const tick = snap(
-                  (e.clientX - e.currentTarget.getBoundingClientRect().left) / px,
-                  step,
-                );
-                seek(start + Math.min(section.length - 1, Math.max(0, tick)));
-              }}
-            >
-              {start === 0 &&
-                !project.tempoChanges.some(
-                  (event) => event.at.sectionId === section.id && event.at.tick === 0,
-                ) && (
-                  <button
-                    className="roll-tempo"
-                    type="button"
-                    style={{ left: 0 }}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      editTempo(0);
-                    }}
-                  >
-                    {project.initialTempo} BPM
-                  </button>
-                )}
-              {project.tempoChanges
-                .filter((event) => event.at.sectionId === section.id)
-                .map((event) => (
-                  <button
-                    className="roll-tempo"
-                    type="button"
-                    key={event.id}
-                    style={{ left: event.at.tick * px }}
-                    onClick={(click) => {
-                      click.stopPropagation();
-                      editTempo(event.at.tick);
-                    }}
-                  >
-                    {Number(event.bpm.toFixed(1))}
-                    {event.ramp ? ` → ${Number(event.ramp.toBpm.toFixed(1))}` : ''} BPM
-                  </button>
-                ))}
-              {song.keys.length > 0 &&
-                chords.map((chord) => (
-                  <strong
-                    key={chord.id}
-                    style={{ left: chord.at * px, width: chord.duration * px }}
-                  >
-                    {chordName(chord, keyFor(chord.at))}
-                  </strong>
-                ))}
-              {Array.from({ length: Math.ceil(editLimit / PPQ) }, (_, i) => (
-                <span key={i} style={{ left: i * zoom }}>
-                  {Math.floor(start / PPQ) + i + 1}
-                </span>
-              ))}
-            </div>
-          </div>
+          <RollRuler
+            project={project}
+            section={section}
+            starts={starts}
+            chords={visibleChords}
+            keyFor={song.keys.length ? keyFor : undefined}
+            range={range}
+            editLimit={editLimit}
+            total={total}
+            width={width}
+            keyboard={keyboard}
+            pixelsPerTick={px}
+            step={step}
+            seek={seek}
+            editTempo={editTempo}
+          />
           <div
             className="roll-grid"
             style={{
@@ -532,28 +544,41 @@ export function PianoRoll({
             {guideKey && (
               <ScaleGuide
                 keys={song.keys}
-                start={start}
-                length={section.length}
+                start={0}
+                length={total}
                 pixelsPerTick={px}
                 rowHeight={row}
               />
             )}
-            {chords.map((chord) => (
-              <i key={chord.id} className="roll-chord" style={{ left: chord.at * px }} />
+            {visibleChords.map((chord) => (
+              <i
+                key={JSON.stringify([chord.sectionId, chord.id])}
+                className="roll-chord"
+                style={{ left: chord.at * px }}
+              />
             ))}
-            {local
+            {project.sections.slice(1).map((part) => (
+              <i
+                key={part.id}
+                className="roll-section-line"
+                style={{ left: starts.get(part.id)! * px }}
+              />
+            ))}
+            {song.notes
               .filter(
                 (n) =>
-                  n.end - start > range.first &&
-                  n.start - start < range.last &&
-                  (n.trackId === track.id ? auto : ghosts),
+                  n.end > range.first &&
+                  n.start < range.last &&
+                  (n.trackId === track.id
+                    ? autoClip(rollSection(project, starts, n.start)!, track)
+                    : ghosts),
               )
               .map((n) => (
                 <div
                   key={n.id}
                   className="roll-ghost"
                   style={{
-                    left: (n.start - start) * px,
+                    left: n.start * px,
                     top: (127 - n.pitch) * row + 2,
                     width: Math.max(2, (n.end - n.start) * px),
                     background:
@@ -566,12 +591,12 @@ export function PianoRoll({
               notes
                 .filter(
                   (note) =>
-                    selected.includes(note.id) ||
+                    drag.current?.id === note.id ||
                     (note.at + note.duration > range.first && note.at < range.last),
                 )
                 .map((note) => {
                   const pitch = resolvePitch(note.pitch, keyFor(note.at));
-                  const active = selected.includes(note.id);
+                  const active = selectedIds.has(note.id);
                   const preview = active ? drag.current : null;
                   const at = note.at + (preview?.mode === 'move' ? delta.ticks : 0);
                   const length =
@@ -607,14 +632,17 @@ export function PianoRoll({
                         if (!g || g.id !== note.id) return;
                         const ticks = snap((e.clientX - g.x) / px, step);
                         const pitches = Math.round((g.y - e.clientY) / row);
-                        const group = notes.filter((n) => selected.includes(n.id));
+                        const group = selectedNotes();
                         const pitchOf = (n: Note) => resolvePitch(n.pitch, keyFor(n.at));
                         const movement =
                           g.mode === 'resize'
                             ? {
                                 ticks: Math.max(
                                   1 - g.duration,
-                                  Math.min(editLimit - g.at - g.duration, ticks),
+                                  Math.min(
+                                    endOf(rollSection(project, starts, g.at)!) - g.at - g.duration,
+                                    ticks,
+                                  ),
                                 ),
                                 pitches: 0,
                               }
@@ -645,7 +673,7 @@ export function PianoRoll({
                         if (g?.id === note.id) {
                           if (g.mode === 'resize' && delta.ticks)
                             patchNotes((n) =>
-                              n.id === g.id ? { duration: n.duration + delta.ticks } : {},
+                              n.id === g.id ? { duration: n.duration + delta.ticks } : undefined,
                             );
                           if (g.mode === 'move') moveSelected(delta.ticks, delta.pitches, false);
                         }
@@ -706,9 +734,9 @@ export function PianoRoll({
           <NoteDialog
             mode={mode}
             note={selectedNote}
-            length={editLimit}
+            length={endOf(rollSection(project, starts, selectedNote.at)!)}
             keyFor={keyFor}
-            update={(patch) => patchNotes((n) => (n.id === selectedNote.id ? patch : {}))}
+            update={(patch) => patchNotes((n) => (n.id === selectedNote.id ? patch : undefined))}
             remove={remove}
             close={() => setDetail(false)}
           />

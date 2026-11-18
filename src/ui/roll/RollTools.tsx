@@ -80,14 +80,14 @@ export function RollTools({
         <ToolButton
           icon={Pencil}
           label="音符を追加"
-          disabled={auto}
+          disabled={!valid}
           pressed={tool === 'draw'}
           onClick={() => setTool('draw')}
         />
         <ToolButton
           icon={ScissorsLineDashed}
           label="音符の長さを変更"
-          disabled={auto}
+          disabled={!valid}
           pressed={tool === 'resize'}
           onClick={() => setTool('resize')}
         />

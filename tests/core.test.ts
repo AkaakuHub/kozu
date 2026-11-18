@@ -158,6 +158,81 @@ await test('描きながらノート長を変更でき、固定長ではセク�
   assert.deepEqual(drawnNoteSpan(PPQ, 3 * PPQ, step, 2 * PPQ), { at: PPQ, duration: PPQ });
   assert.deepEqual(drawnNoteSpan(PPQ, PPQ / 2, step, 2 * PPQ), { at: PPQ / 2, duration: PPQ / 2 });
 });
+
+await test('全曲のロールで音符を次のセクションへ移しても時刻・長さ・音高を保つ', async () => {
+  const { editTrackNotes, trackNotes } = await import('../src/core/roll-timeline.ts');
+  const { moveNote } = await import('../src/core/roll-editing.ts');
+  const project = createBlankProject();
+  const first = project.sections[0]!;
+  const next = createSection('サビ', PPQ * 4);
+  project.sections.push(next);
+  const track = project.tracks[0]!;
+  const note = { ...makeNote(first.length - PPQ, PPQ, 64), pitch: degreePitch(64, key) };
+  first.notes[track.id] = [note];
+  project.keyChanges.push({
+    id: 'next-key',
+    at: { sectionId: next.id, tick: 0 },
+    key: { ...key, tonic: 2 },
+  });
+  const starts = sectionStarts(project);
+  const [source] = trackNotes(project, track.id, starts);
+  const { keys } = timeline(project);
+  const at = first.length + PPQ;
+  const moved = {
+    ...note,
+    ...moveNote(
+      note,
+      { at, midi: 64 },
+      first.length + next.length,
+      (tick) => valueAt(keys, tick).key,
+    ),
+  };
+  const selected = editTrackNotes(project, track, [source!], [moved]);
+  const [placed] = trackNotes(project, track.id, starts);
+  assert.equal(placed?.id, selected?.[0]);
+  assert.equal(placed?.sectionId, next.id);
+  assert.equal(placed?.at, at);
+  assert.equal(placed?.duration, PPQ);
+  assert.equal(next.notes[track.id]?.[0]?.at, PPQ);
+  assert.deepEqual(first.notes[track.id], []);
+  assert.equal(compile(project).notes.find((item) => item.trackId === track.id)?.pitch, 64);
+  noErrors(project);
+});
+
+await test('全曲のロールは配置できない移動を一括で取り消し、末尾の自動延長を保つ', async () => {
+  const { editTrackNotes, trackNotes } = await import('../src/core/roll-timeline.ts');
+  const project = createBlankProject();
+  const first = project.sections[0]!;
+  const last = createSection('最後', PPQ * 4);
+  last.autoExtend = true;
+  project.sections.push(last);
+  const track = project.tracks[0]!;
+  const original = makeNote(0, PPQ, 60);
+  first.notes[track.id] = [original];
+  const [source] = trackNotes(project, track.id, sectionStarts(project));
+  const before = clone(project);
+  const end = first.length + last.length;
+  assert.equal(
+    editTrackNotes(
+      project,
+      track,
+      [source!],
+      [makeNote(end, PPQ, 62), makeNote(first.length - 1, PPQ, 64)],
+    ),
+    null,
+  );
+  assert.deepEqual(project, before);
+  assert.ok(editTrackNotes(project, track, [], [makeNote(end, PPQ, 62)]));
+  assert.equal(last.length, PPQ * 8);
+  assert.equal(last.notes[track.id]?.[0]?.at, PPQ * 4);
+  const [resizing] = trackNotes(project, track.id, sectionStarts(project));
+  assert.ok(
+    editTrackNotes(project, track, [resizing!], [{ ...original, duration: first.length + PPQ }]),
+  );
+  assert.equal(first.length, before.sections[0]!.length + PPQ * 4);
+  assert.equal(last.notes[track.id]?.[0]?.at, PPQ * 4);
+  noErrors(project);
+});
 await test('自動のセクションは小節単位で伸び、手動の長さは保持する', () => {
   const project = createBlankProject();
   const section = project.sections[0]!;

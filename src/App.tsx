@@ -24,6 +24,7 @@ import { compile } from './core/compile.ts';
 import { exportMidi } from './core/midi.ts';
 import { hasUncommittedChanges } from './core/history/fingerprint.ts';
 import { defaultMasterGain } from './core/preferences.ts';
+import { rollSection } from './core/roll-timeline.ts';
 import { createSection } from './core/presets.ts';
 import { growSection, measureTicks } from './core/section-length.ts';
 import { sharesScore } from './core/track-mix.ts';
@@ -139,14 +140,15 @@ export default function App() {
     };
   }, []);
 
-  const play = async (at: number) => {
+  const play = async (at: number, activePart = part) => {
     if (hasErrors) return;
     const id = ++request.current;
-    const end = loop ? sectionStart + part.length : song.totalTicks;
-    const first = loop ? sectionStart : 0;
+    const activeStart = starts.get(activePart.id)!;
+    const end = loop ? activeStart + activePart.length : song.totalTicks;
+    const first = loop ? activeStart : 0;
     const start = at >= first && at < end ? at : first;
     let labelTick = -1;
-    let lastPart = part.id;
+    let lastPart = activePart.id;
     let started = false;
     setPlayback('loading');
     try {
@@ -197,8 +199,10 @@ export default function App() {
     position(starts.get(id) ?? 0);
   };
   const seek = (tick: number) => {
+    const target = rollSection(project, starts, tick) ?? part;
+    setPart(target.id);
     position(tick);
-    if (playback !== 'stopped') void play(tick);
+    if (playback !== 'stopped') void play(tick, target);
   };
   const focusProject = (next: Project) => {
     stop();
@@ -228,8 +232,13 @@ export default function App() {
       notify(error instanceof Error ? error.message : String(error));
     }
   };
-  const editTempo = (tick = Math.round(realHead.current - sectionStart)) => {
-    setTimelineTick(Math.max(0, Math.min(part.length - 1, tick)));
+  const editTempo = (tick = Math.round(realHead.current)) => {
+    const target = rollSection(project, starts, tick);
+    if (!target) return;
+    stop();
+    setPart(target.id);
+    position(tick);
+    setTimelineTick(Math.max(0, Math.min(target.length - 1, tick - starts.get(target.id)!)));
     open('timeline');
   };
   const add = (name: string, ticks: number, autoExtend: boolean) => {
@@ -472,13 +481,12 @@ export default function App() {
         }
       />
       <PianoRoll
-        key={part.id}
         project={project}
         section={part}
         track={track}
         mode={colorMode}
         start={sectionStart}
-        sectionMeasure={sectionMeasure}
+        starts={starts}
         song={draft}
         scaleGuide={scaleGuide}
         audition={
@@ -501,6 +509,7 @@ export default function App() {
         editTempo={editTempo}
         generateMelody={() => open('melody')}
         change={changeSection}
+        commit={commit}
       />
       <footer className="work-status">
         <span>
