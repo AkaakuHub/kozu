@@ -1,14 +1,9 @@
 import type { Project } from '../../core/types.ts';
-import { projectRows, rowsProject, scoreKeys, scoreTables } from '../../core/history/score-rows.ts';
+import { projectRows, rowsProject, scoreTables } from '../../core/history/score-rows.ts';
 import type { ScoreRow, ScoreRows, ScoreTable } from '../../core/history/score-rows.ts';
 import { delta } from '../../core/history/revisions.ts';
 import type { ScoreBranch, ScoreCommit, ScorePull } from '../../core/history/revisions.ts';
-
-const ancestry = `WITH RECURSIVE path(id, level) AS (
-  SELECT id, 0 FROM score_commits WHERE id = ? AND owner = ?
-  UNION ALL
-  SELECT c.parent, path.level + 1 FROM path JOIN score_commits c ON c.id = path.id WHERE c.parent IS NOT NULL
-)`;
+import { revisionQuery } from './revision-query.ts';
 
 export async function readHistory(db: D1Database, owner: string) {
   const [branches, commits, pulls] = await db.batch([
@@ -39,17 +34,7 @@ export async function loadRows(
   id: string,
 ): Promise<ScoreRows | null> {
   const result = await db.batch<ScoreRow>(
-    scoreTables.map((table) => {
-      const keys = scoreKeys[table];
-      const query =
-        table === 'score_header'
-          ? `${ancestry} SELECT t.* FROM path JOIN ${table} t ON t.revision = path.id ORDER BY path.level LIMIT 1`
-          : `${ancestry} SELECT * FROM (
-          SELECT t.*, row_number() OVER (PARTITION BY ${keys.map((key) => `t.${key}`).join(', ')} ORDER BY path.level) AS nearest
-          FROM path JOIN ${table} t ON t.revision = path.id
-        ) WHERE nearest = 1 AND removed = 0`;
-      return db.prepare(query).bind(id, owner);
-    }),
+    scoreTables.map((table) => db.prepare(revisionQuery(table)).bind(id, owner)),
   );
   if (!result[0]?.results.length) return null;
   return Object.fromEntries(

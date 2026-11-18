@@ -65,6 +65,44 @@ const noErrors = (p: ReturnType<typeof simple>) =>
     [],
   );
 await test('空の新規プロジェクトは編集可能な譜面として有効', () => noErrors(createBlankProject()));
+
+await test('履歴は指定した版とその親の差分を適用し、削除した音符や別ブランチの変更を読み込まない', async () => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const { revisionQuery } = await import('../src/worker/history/revision-query.ts');
+  const database = new DatabaseSync(':memory:');
+  try {
+    database.exec(
+      await readFile(new URL('../migrations/0003_score_history.sql', import.meta.url), 'utf8'),
+    );
+    const commit = database.prepare('INSERT INTO score_commits VALUES (?, ?, ?, ?, ?, ?)');
+    commit.run('first', 'project', null, null, '初版', 1);
+    commit.run('delete', 'project', 'first', null, '音符を削除', 2);
+    commit.run('side', 'project', 'first', null, '別ブランチ', 3);
+    commit.run('merge', 'project', 'delete', 'side', 'マージ', 4);
+    commit.run('restore', 'project', 'merge', null, '音符を復元', 5);
+    const note = database.prepare(`INSERT INTO score_notes
+      (revision, section_id, track_id, id, removed, tick, duration, midi, velocity, origin, locked)
+      VALUES (?, ?, ?, ?, ?, 0, 120, 60, ?, 'manual', 1)`);
+    note.run('first', 'part', 'track', 'same', 0, 91);
+    note.run('first', 'other-part', 'track', 'same', 0, 82);
+    note.run('delete', 'part', 'track', 'same', 1, null);
+    note.run('side', 'part', 'track', 'same', 0, 100);
+    note.run('restore', 'part', 'track', 'same', 0, 103);
+    const query = database.prepare(revisionQuery('score_notes'));
+    const velocities = (head: string, owner = 'project') =>
+      query
+        .all(head, owner)
+        .map((row) => Number(row.velocity))
+        .sort((a, b) => a - b);
+    assert.deepEqual(velocities('first'), [82, 91]);
+    assert.deepEqual(velocities('side'), [82, 100]);
+    assert.deepEqual(velocities('merge'), [82]);
+    assert.deepEqual(velocities('restore'), [82, 103]);
+    assert.deepEqual(velocities('restore', 'different-project'), []);
+  } finally {
+    database.close();
+  }
+});
 await test('3種類のドラムキットにGMの打楽器47音がそろい、不完全なファイルを拒否する', async () => {
   const { drumSamples } = await import('../src/audio/drum-bank.ts');
   const { drumKits, drumPitches, isDrumKit } = await import('../src/core/drum-kits.ts');
