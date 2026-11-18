@@ -43,10 +43,27 @@ export function moveNote(
   };
 }
 
-export function drawnNoteSpan(anchor: number, pointer: number, step: number, limit: number) {
-  const edge = Math.max(0, Math.min(limit, Math.round(pointer / step) * step));
-  const at = Math.min(anchor, edge);
-  return { at, duration: Math.min(limit - at, Math.max(step, Math.abs(edge - anchor))) };
+export function startDrawnNote(pointer: number, step: number, start: number, end: number) {
+  const at = Math.max(start, Math.floor(pointer / step) * step);
+  const next = (Math.floor(at / step) + 1) * step;
+  return { at, duration: Math.min(end, next) - at };
+}
+
+export function drawnNoteSpan(
+  anchor: number,
+  pointer: number,
+  step: number,
+  start: number,
+  end: number,
+) {
+  const edge =
+    pointer <= start
+      ? start
+      : pointer >= end
+        ? end
+        : Math.max(start, Math.min(end, Math.round(pointer / step) * step));
+  if (edge === anchor) return startDrawnNote(anchor, step, start, end);
+  return { at: Math.min(anchor, edge), duration: Math.abs(edge - anchor) };
 }
 
 export function placePhrase(notes: Note[], at: number, limit: number): Note[] {

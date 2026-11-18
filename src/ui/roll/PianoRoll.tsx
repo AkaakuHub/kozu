@@ -27,6 +27,7 @@ import {
   copyPhrase,
   moveNote,
   placePhrase,
+  startDrawnNote,
 } from '../../core/roll-editing.ts';
 const NoteDialog = lazy(() =>
   import('./NoteDialog.tsx').then((module) => ({ default: module.NoteDialog })),
@@ -425,11 +426,11 @@ export function PianoRoll({
     if (!part || autoClip(part, track)) return;
     const start = starts.get(part.id)!;
     const end = part === last ? editLimit : start + part.length;
-    const at = start + Math.floor((tick - start) / step) * step;
     const midi = 127 - Math.floor((e.clientY - rect.top) / row);
-    if (at >= end || midi < 0 || midi > 127) return;
-    drawing.current = { pointer: e.pointerId, anchor: at, start, end, midi };
-    setDraftNote({ at, duration: Math.min(step, end - at), midi });
+    if (tick >= end || midi < 0 || midi > 127) return;
+    const span = startDrawnNote(tick, step, start, end);
+    drawing.current = { pointer: e.pointerId, anchor: span.at, start, end, midi };
+    setDraftNote({ ...span, midi });
     e.currentTarget.setPointerCapture(e.pointerId);
     audition?.(midi);
   };
@@ -437,13 +438,8 @@ export function PianoRoll({
     const drawingNote = drawing.current;
     if (!drawingNote || drawingNote.pointer !== event.pointerId) return null;
     const tick = (event.clientX - event.currentTarget.getBoundingClientRect().left) / px;
-    const span = drawnNoteSpan(
-      drawingNote.anchor - drawingNote.start,
-      tick - drawingNote.start,
-      step,
-      drawingNote.end - drawingNote.start,
-    );
-    return { ...span, at: span.at + drawingNote.start, midi: drawingNote.midi };
+    const span = drawnNoteSpan(drawingNote.anchor, tick, step, drawingNote.start, drawingNote.end);
+    return { ...span, midi: drawingNote.midi };
   };
   const cancelDrawing = () => {
     if (!drawing.current) return;

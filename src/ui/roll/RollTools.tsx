@@ -143,9 +143,20 @@ export function RollTools({
           value={step}
           onChange={(e) => setStep(Number(e.target.value))}
         >
-          {[32, 16, 12, 8, 6, 4, 2].map((n) => (
-            <option key={n} value={(PPQ * 4) / n}>
-              1/{n}
+          {(
+            [
+              [32, '1/32'],
+              [24, '1/16 三連'],
+              [16, '1/16'],
+              [12, '1/8 三連'],
+              [8, '1/8'],
+              [6, '1/4 三連'],
+              [4, '1/4'],
+              [2, '1/2'],
+            ] as const
+          ).map(([division, label]) => (
+            <option key={division} value={(PPQ * 4) / division}>
+              {label}
             </option>
           ))}
         </select>
