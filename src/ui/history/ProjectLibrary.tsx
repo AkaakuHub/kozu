@@ -20,6 +20,7 @@ import { FileMusic, Plus } from 'lucide-react';
 import type { Project } from '../../core/types.ts';
 import type { ScoreProject } from '../../core/score-projects.ts';
 import type { WorkingBranch } from '../../core/history/revisions.ts';
+import { shouldResumeDraft } from '../../core/history/fingerprint.ts';
 import {
   createScoreProject,
   readProjects,
@@ -131,7 +132,11 @@ export default function ProjectLibrary() {
                     onClick={() =>
                       void run(async () => {
                         const draft = await loadDraft(item.id);
-                        if (draft?.working) await openEditor(draft.project, draft.working);
+                        if (
+                          draft?.working &&
+                          (await shouldResumeDraft(draft.project, draft.working, item.head))
+                        )
+                          await openEditor(draft.project, draft.working);
                         else {
                           const score = await readRevision(item.id, item.head);
                           await openEditor(

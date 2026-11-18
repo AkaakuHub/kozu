@@ -257,6 +257,22 @@ await test('コミット後に編集して端末に保存しても未コミッ�
   assert.equal(await hasUncommittedChanges(original, branch), false);
   assert.equal(await hasUncommittedChanges(edit, null), true);
 });
+await test('一覧から開くときに未編集の古いmainだけをクラウドの最新版へ進める', async () => {
+  const { committedBranch, shouldResumeDraft } = await import('../src/core/history/fingerprint.ts');
+  const original = createBlankProject();
+  const branch = { projectId: 'project', branch: 'main', head: 'before' };
+  const clean = await committedBranch(branch, original);
+  const edited = clone(original);
+  edited.sections[0]!.name = '下書き';
+  assert.equal(await shouldResumeDraft(original, clean, 'after'), false);
+  assert.equal(await shouldResumeDraft(original, clean, 'before'), true);
+  assert.equal(await shouldResumeDraft(edited, clean, 'after'), true);
+  assert.equal(
+    await shouldResumeDraft(original, { ...clean, branch: 'alternative' }, 'after'),
+    true,
+  );
+  assert.equal(await shouldResumeDraft(original, branch, 'after'), true);
+});
 await test('ミキサーの変更は試聴の発音を再生成せずMIDIには反映する', () => {
   const project = scoreFixture();
   const track = project.tracks[0]!;

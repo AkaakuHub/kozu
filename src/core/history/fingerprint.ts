@@ -17,3 +17,9 @@ export async function committedBranch(
 export async function hasUncommittedChanges(project: Project, branch: WorkingBranch | null) {
   return branch?.fingerprint === undefined || branch.fingerprint !== (await fingerprint(project));
 }
+
+export async function shouldResumeDraft(project: Project, branch: WorkingBranch, mainHead: string) {
+  return (
+    branch.branch !== 'main' || branch.head === mainHead || hasUncommittedChanges(project, branch)
+  );
+}
