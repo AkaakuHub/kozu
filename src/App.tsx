@@ -109,7 +109,15 @@ export default function App() {
 
   useEffect(() => {
     return () => player.stopAudition();
-  }, [player, track.id, track.program, track.guitar.output, notePreview]);
+  }, [
+    player,
+    track.id,
+    track.kind,
+    track.program,
+    track.drumKit,
+    track.guitar.output,
+    notePreview,
+  ]);
 
   const change = (update: (project: Project) => void) => {
     const next = clone(project);

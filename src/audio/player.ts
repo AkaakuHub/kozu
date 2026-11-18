@@ -137,6 +137,7 @@ export class Player {
             at: seconds(Math.max(at, note.start)),
             end: seconds(Math.min(end, note.end)),
             velocity: note.velocity,
+            percussion: track.kind === 'drums',
           };
         });
     const repeated = loopStart === null ? [] : events(loopStart);
@@ -168,7 +169,12 @@ export class Player {
           const duration = base + item.end - time;
           if (duration <= 0 || !item.instrument) continue;
           for (const note of item.notes)
-            item.instrument.start({ note, time, duration, velocity: item.velocity });
+            item.instrument.start({
+              note,
+              time,
+              velocity: item.velocity,
+              ...(item.percussion ? {} : { duration }),
+            });
         }
         return i;
       };

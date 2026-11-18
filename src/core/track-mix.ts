@@ -23,6 +23,7 @@ export function sharesScore(a: Project, b: Project): boolean {
         track.id === next.id &&
         track.kind === next.kind &&
         track.program === next.program &&
+        track.drumKit === next.drumKit &&
         track.pattern === next.pattern &&
         track.octave === next.octave &&
         track.guitar === next.guitar

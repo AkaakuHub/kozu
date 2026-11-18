@@ -1,4 +1,5 @@
 import type { InstrumentProgram } from './instruments.ts';
+import type { DrumKit } from './drum-kits.ts';
 /** Musical coordinates are integer ticks. 960 ticks = a quarter note, independent of meter. */
 export const PPQ = 960 as const;
 export type Degree = 1 | 2 | 3 | 4 | 5 | 6 | 7;
@@ -92,6 +93,7 @@ export interface Track {
   name: string;
   kind: TrackKind;
   program?: InstrumentProgram;
+  drumKit?: DrumKit;
   harmonySource?: string;
   pattern: Pattern;
   gain: number;

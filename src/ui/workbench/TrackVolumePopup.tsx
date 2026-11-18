@@ -1,4 +1,4 @@
-import { Headphones, Piano, VolumeX } from 'lucide-react';
+import { Drum, Headphones, Piano, VolumeX } from 'lucide-react';
 import type { Track } from '../../core/types.ts';
 import { AnchoredPopup } from './AnchoredPopup.tsx';
 import { ToolButton } from './ToolButton.tsx';
@@ -45,7 +45,7 @@ export function TrackMixControls({
       )}
       {chooseInstrument && (
         <ToolButton
-          icon={Piano}
+          icon={track.kind === 'drums' ? Drum : Piano}
           label={`${track.name}の音源ライブラリ`}
           tooltip="音源ライブラリ"
           onClick={chooseInstrument}

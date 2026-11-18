@@ -103,11 +103,7 @@ export const Arrangement = memo(function Arrangement({
                   track={track}
                   showButtons={showButtons}
                   showFader={showFader}
-                  chooseInstrument={
-                    showButtons && track.kind !== 'drums'
-                      ? () => chooseInstrument(track.id)
-                      : undefined
-                  }
+                  chooseInstrument={showButtons ? () => chooseInstrument(track.id) : undefined}
                   toggle={(key) => mix(track, key)}
                   volume={(gain) => changeMix(track.id, { gain })}
                   previewVolume={(gain) => previewVolume(track.id, gain)}
@@ -240,7 +236,7 @@ export const Arrangement = memo(function Arrangement({
           showButtons={!showButtons}
           showFader={!showFader}
           chooseInstrument={
-            showButtons || popupTrack.kind === 'drums'
+            showButtons
               ? undefined
               : () => {
                   setPopup(null);

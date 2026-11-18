@@ -78,6 +78,7 @@ export function Tracks({ project, current, change, requestDelete }: Props) {
                 update(track.id, (next) => {
                   const program = next.program ?? defaultProgram(next);
                   next.kind = kind as TrackKind;
+                  if (next.kind !== 'drums') delete next.drumKit;
                   next.pattern = next.kind === 'drums' ? 'pop' : 'sustain';
                   if (program !== undefined) next.program = program;
                 });

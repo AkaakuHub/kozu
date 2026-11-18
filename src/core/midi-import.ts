@@ -1,4 +1,5 @@
 import { isInstrumentProgram } from './instruments.ts';
+import { drumKitForProgram } from './drum-kits.ts';
 import type { InstrumentProgram } from './instruments.ts';
 import { parseMidi } from 'midi-file';
 import { createSection, createTrack } from './presets.ts';
@@ -110,7 +111,13 @@ export function importMidi(bytes: Uint8Array, title: string): Project {
       );
       track.gain = 1;
       const program = programs.get(channel);
-      if (channel !== 9 && program !== undefined) track.program = program;
+      if (program !== undefined) {
+        if (channel !== 9) track.program = program;
+        else {
+          const kit = drumKitForProgram(program);
+          if (kit) track.drumKit = kit;
+        }
+      }
       project.tracks.push(track);
       section.notes[track.id] = clip;
     }

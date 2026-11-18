@@ -33,7 +33,8 @@ export class Audition {
       throw new Error('試聴音源を読み込めませんでした。');
     }
     if (request !== this.request) return;
-    for (const note of notes) audio.start({ note, duration: 0.22, velocity: 88 });
+    for (const note of notes)
+      audio.start({ note, velocity: 88, ...(track.kind === 'drums' ? {} : { duration: 0.22 }) });
   }
 
   stop() {

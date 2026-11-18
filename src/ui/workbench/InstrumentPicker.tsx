@@ -3,6 +3,29 @@ import { ChevronLeft, ChevronRight, CircleCheck } from 'lucide-react';
 import { Button, List, ListItemButton, ListItemText, Stack, TextField } from '@mui/material';
 import { instrumentFamilies, instruments } from '../../core/instrument-catalog.ts';
 import type { InstrumentProgram } from '../../core/instruments.ts';
+import { drumKits, isDrumKit } from '../../core/drum-kits.ts';
+import type { DrumKit } from '../../core/drum-kits.ts';
+
+export function DrumKitPicker({
+  selected,
+  choose,
+}: {
+  selected: DrumKit;
+  choose: (kit: DrumKit) => void;
+}) {
+  return (
+    <List disablePadding aria-label="ドラムキット">
+      {Object.keys(drumKits)
+        .filter(isDrumKit)
+        .map((kit) => (
+          <ListItemButton key={kit} selected={kit === selected} onClick={() => choose(kit)}>
+            <ListItemText primary={drumKits[kit].name} />
+            {kit === selected && <CircleCheck aria-hidden size={16} />}
+          </ListItemButton>
+        ))}
+    </List>
+  );
+}
 
 export function InstrumentPicker({
   selected,

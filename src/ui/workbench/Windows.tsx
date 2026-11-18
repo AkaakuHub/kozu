@@ -16,6 +16,7 @@ import type { CompiledSong, Project, Section, Track } from '../../core/types.ts'
 import type { Appearance } from '../../core/preferences.ts';
 import { MuiAppearance } from './MuiAppearance.tsx';
 import { generateMelody } from '../../core/presets.ts';
+import { defaultDrumKit } from '../../core/drum-kits.ts';
 import { timeline, valueAt } from '../../core/time.ts';
 import { HarmonyVoice } from './HarmonyVoice.tsx';
 import type { WorkingBranch } from '../../core/history/revisions.ts';
@@ -38,6 +39,9 @@ const Harmony = lazy(() =>
 const Tracks = lazy(() => import('../Tracks.tsx').then((module) => ({ default: module.Tracks })));
 const InstrumentPicker = lazy(() =>
   import('./InstrumentPicker.tsx').then((module) => ({ default: module.InstrumentPicker })),
+);
+const DrumKitPicker = lazy(() =>
+  import('./InstrumentPicker.tsx').then((module) => ({ default: module.DrumKitPicker })),
 );
 const TechniqueDialog = lazy(() =>
   import('../TechniqueDialog.tsx').then((module) => ({ default: module.TechniqueDialog })),
@@ -204,20 +208,32 @@ export function Windows({
                   requestDelete={requestDelete}
                 />
               )}
-              {view === 'instruments' && (
-                <InstrumentPicker
-                  selected={track.program}
-                  choose={(program) => {
-                    if (program !== track.program)
-                      change((next) => {
-                        const target = next.tracks.find(({ id }) => id === track.id)!;
-                        if (program === undefined) delete target.program;
-                        else target.program = program;
-                      });
-                    close();
-                  }}
-                />
-              )}
+              {view === 'instruments' &&
+                (track.kind === 'drums' ? (
+                  <DrumKitPicker
+                    selected={track.drumKit ?? defaultDrumKit}
+                    choose={(drumKit) => {
+                      if (drumKit !== (track.drumKit ?? defaultDrumKit))
+                        change((next) => {
+                          next.tracks.find(({ id }) => id === track.id)!.drumKit = drumKit;
+                        });
+                      close();
+                    }}
+                  />
+                ) : (
+                  <InstrumentPicker
+                    selected={track.program}
+                    choose={(program) => {
+                      if (program !== track.program)
+                        change((next) => {
+                          const target = next.tracks.find(({ id }) => id === track.id)!;
+                          if (program === undefined) delete target.program;
+                          else target.program = program;
+                        });
+                      close();
+                    }}
+                  />
+                ))}
               {view === 'diagnostics' &&
                 (song.diagnostics.length ? (
                   <ul>

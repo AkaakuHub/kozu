@@ -1,4 +1,5 @@
 import { isInstrumentProgram } from './instruments.ts';
+import { isDrumKit } from './drum-kits.ts';
 import { PPQ } from './types.ts';
 import type { Diagnostic, Pitch, Project } from './types.ts';
 import { CHORDS, SCALES, inScale, resolvePitch } from './theory.ts';
@@ -68,6 +69,7 @@ const track = (x: unknown): boolean =>
   string(x.id) &&
   string(x.name) &&
   (x.program === undefined || isInstrumentProgram(x.program)) &&
+  (x.drumKit === undefined || (x.kind === 'drums' && isDrumKit(x.drumKit))) &&
   (x.harmonySource === undefined || string(x.harmonySource)) &&
   ['melody', 'chords', 'guitar', 'bass', 'drums'].includes(String(x.kind)) &&
   patterns.includes(String(x.pattern)) &&

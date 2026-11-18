@@ -1,0 +1,6 @@
+FluidR3Mono GM by Frank Wen and Michael Cowgill, MIT license (see LICENSE.txt).
+Source: https://github.com/LibreScore/sf3/tree/3a6eda823dac2ec3e134d38544ca839217358f08
+Programs: 0 Standard, 8 Room, 24 Electronic. Each bank contains MIDI keys 35–81.
+Rendered with spessasynth_core 4.4.10 at 44,100 Hz, velocity 110 and no send effects.
+Stereo mixed to mono, tails trimmed below −60 dB with 50 ms padding, encoded with LAME VBR quality 4.
+Archive layout: 47 little-endian uint32 byte lengths, followed by 47 complete MP3 streams in ascending MIDI key order.

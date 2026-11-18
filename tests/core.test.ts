@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import {
   createBlankProject,
   createSection,
@@ -64,6 +65,46 @@ const noErrors = (p: ReturnType<typeof simple>) =>
     [],
   );
 await test('空の新規プロジェクトは編集可能な譜面として有効', () => noErrors(createBlankProject()));
+await test('3種類のドラムキットにGMの打楽器47音がそろい、不完全なファイルを拒否する', async () => {
+  const { drumSamples } = await import('../src/audio/drum-bank.ts');
+  const { drumKits, drumPitches, isDrumKit } = await import('../src/core/drum-kits.ts');
+  const { previewNotes, previewVoice } = await import('../src/audio/instruments.ts');
+  for (const kit of Object.keys(drumKits).filter(isDrumKit)) {
+    const asset = await readFile(new URL(`../public/audio/drums/${kit}.bin`, import.meta.url));
+    const archive = Uint8Array.from(asset).buffer;
+    assert.equal(drumSamples(archive).length, 47);
+    assert.throws(() => drumSamples(archive.slice(0, -1)));
+    const track = { ...createTrack('drums'), drumKit: kit };
+    assert.equal(previewVoice(track), kit);
+    assert.deepEqual(
+      drumPitches.flatMap((note) => previewNotes(track, note)),
+      Array.from({ length: 47 }, (_, index) => 35 + index),
+    );
+    assert.deepEqual(previewNotes(track, 82), []);
+  }
+});
+
+await test('選んだドラムキットは譜面履歴とMIDIの往復で保持される', async () => {
+  const { importMidi } = await import('../src/core/midi-import.ts');
+  const { projectRows, rowsProject } = await import('../src/core/history/score-rows.ts');
+  const project = createBlankProject();
+  const track = createTrack('drums');
+  track.drumKit = 'electronic';
+  project.tracks = [track];
+  project.sections[0]!.notes[track.id] = [makeNote(0, PPQ / 8, 75), makeNote(PPQ, PPQ / 8, 81)];
+  const restored = rowsProject(projectRows(project));
+  assert.equal(restored.tracks[0]?.drumKit, 'electronic');
+  const imported = importMidi(exportMidi(restored, compile(restored)), 'Percussion');
+  const notes = compile(imported).notes;
+  assert.equal(imported.tracks[0]?.drumKit, 'electronic');
+  assert.deepEqual(
+    notes.map((note) => [note.pitch, note.channel]),
+    [
+      [75, 9],
+      [81, 9],
+    ],
+  );
+});
 await test('トラックを削除すると全セクションの音符と参照を外し、最後の1本は残す', async () => {
   const { removeTrack } = await import('../src/core/track-editing.ts');
   const project = createBlankProject();

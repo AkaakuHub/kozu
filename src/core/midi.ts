@@ -2,6 +2,7 @@ import { PPQ } from './types.ts';
 import type { CompiledSong, Key, Project, RenderedNote } from './types.ts';
 import { keyName, mod } from './theory.ts';
 import { midiRouting } from './midi-routing.ts';
+import { drumKits } from './drum-kits.ts';
 interface Event {
   tick: number;
   priority: number;
@@ -99,8 +100,10 @@ export function exportMidi(project: Project, song: CompiledSong): Uint8Array {
         { tick: note.start, priority: 3, bytes: [0x90 | note.channel, note.pitch, note.velocity] },
         { tick: note.end, priority: 1, bytes: [0x80 | note.channel, note.pitch, 0] },
       );
-    if (track.program !== undefined && track.kind !== 'drums')
-      events.push({ tick: 0, priority: 2, bytes: [0xc0 | channel, track.program] });
+    const program =
+      track.kind === 'drums' ? track.drumKit && drumKits[track.drumKit].program : track.program;
+    if (program !== undefined)
+      events.push({ tick: 0, priority: 2, bytes: [0xc0 | channel, program] });
     for (const br of song.breaks.filter((event) => event.trackId === track.id))
       events.push({ tick: br.tick, priority: 2, bytes: [0xb0 | channel, 64, 0] });
     trackChunks.push(encodeTrack(events, song.totalTicks));
