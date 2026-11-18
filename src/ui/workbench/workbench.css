@@ -486,6 +486,15 @@ body {
   box-shadow: 0 2px 8px #0002;
 }
 @media (pointer: coarse) {
+  .workbench,
+  .anchored-popup {
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  .workbench :is(input, textarea, [contenteditable='true']) {
+    user-select: text;
+    -webkit-touch-callout: default;
+  }
   .app-menu-item,
   .track-volume-popup .tool-button {
     min-height: 42px;
