@@ -209,10 +209,9 @@ export default function App() {
     refreshPlayback(previous);
   }, [project]);
 
-  const choosePart = (id: string) => {
-    stop();
+  const selectPart = (id: string) => {
     setPart(id);
-    position(starts.get(id) ?? 0);
+    if (playback === 'stopped') position(starts.get(id)!);
   };
   const seek = (tick: number) => {
     const target = rollSection(project, starts, tick) ?? part;
@@ -271,7 +270,11 @@ export default function App() {
     if (playback === 'stopped') void play(realHead.current);
     else stop();
   };
-  const rewind = () => choosePart(project.sections[0]!.id);
+  const rewind = () => {
+    stop();
+    setPart(project.sections[0]!.id);
+    position(0);
+  };
   const meter = song.meters.length ? valueAt(song.meters, head) : project.initialMeter;
   const tempo = song.tempos.length ? valueAt(song.tempos, head).bpm : project.initialTempo;
 
@@ -477,14 +480,11 @@ export default function App() {
         notes={draft.notes}
         starts={starts}
         active={part.id}
-        choose={choosePart}
+        choose={selectPart}
         trackId={track.id}
         selectTrack={(id, sectionId) => {
           setTrack(id);
-          if (sectionId && playback === 'stopped') {
-            setPart(sectionId);
-            position(starts.get(sectionId)!);
-          }
+          if (sectionId) selectPart(sectionId);
         }}
         requestDelete={requestDelete}
         chooseInstrument={(id) => {
