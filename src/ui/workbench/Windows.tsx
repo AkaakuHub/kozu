@@ -148,13 +148,7 @@ export function Windows({
             }}
           />
         ) : view === 'voice' ? (
-          <HarmonyVoice
-            track={track}
-            section={section}
-            start={sectionStart}
-            change={changeSection}
-            close={close}
-          />
+          <HarmonyVoice track={track} project={project} change={change} close={close} />
         ) : view === 'motif' ? (
           <MotifWindow
             project={project}

@@ -68,6 +68,7 @@ const track = (x: unknown): boolean =>
   string(x.id) &&
   string(x.name) &&
   (x.program === undefined || isInstrumentProgram(x.program)) &&
+  (x.harmonySource === undefined || string(x.harmonySource)) &&
   ['melody', 'chords', 'guitar', 'bass', 'drums'].includes(String(x.kind)) &&
   patterns.includes(String(x.pattern)) &&
   number(x.gain) &&
@@ -193,7 +194,17 @@ export function validate(project: Project): Diagnostic[] {
   const sectionIds = new Set(project.sections.map((s) => s.id));
   if (trackIds.size !== project.tracks.length || sectionIds.size !== project.sections.length)
     issue('error', 'duplicate-id', 'トラックまたはパートのIDが重複しています。');
+  const harmonySources = new Set<string>();
   for (const t of project.tracks) {
+    if (t.harmonySource !== undefined) {
+      if (
+        t.harmonySource === t.id ||
+        !trackIds.has(t.harmonySource) ||
+        harmonySources.has(t.harmonySource)
+      )
+        issue('error', 'harmony-source', `${t.name}: ハモリの元トラックを確認してください。`);
+      harmonySources.add(t.harmonySource);
+    }
     if (!bounded(t.gain, 0, 1) || !Number.isInteger(t.octave) || !bounded(t.octave, 0, 7))
       issue('error', 'track-range', `${t.name}: 音量またはオクターブが範囲外です。`);
     const g = t.guitar;

@@ -9,27 +9,23 @@ import {
   TextField,
 } from '@mui/material';
 import { useState } from 'react';
-import { harmonize } from '../../core/harmonize.ts';
-import { createTrack } from '../../core/presets.ts';
-import { timeline, valueAt } from '../../core/time.ts';
-import type { Project, Section, Track } from '../../core/types.ts';
+import { applyHarmony } from '../../core/harmonize.ts';
+import type { Project, Track } from '../../core/types.ts';
 
 export function HarmonyVoice({
   track,
-  section,
-  start,
+  project,
   close,
   change,
 }: {
   track: Track;
-  section: Section;
-  start: number;
+  project: Project;
   close: () => void;
-  change: (update: (section: Section, project: Project) => void) => void;
+  change: (update: (project: Project) => void) => void;
 }) {
   const [interval, setInterval] = useState<3 | 6>(3);
   const [below, setBelow] = useState(false);
-  const notes = section.notes[track.id] ?? [];
+  const existing = project.tracks.find((voice) => voice.harmonySource === track.id);
   return (
     <Dialog open onClose={close} fullWidth maxWidth="xs">
       <DialogTitle>ハモリ · {track.name}</DialogTitle>
@@ -38,11 +34,11 @@ export function HarmonyVoice({
           <TextField
             select
             label="音程"
-            value={interval}
+            value={String(interval)}
             onChange={(event) => setInterval(event.target.value === '6' ? 6 : 3)}
           >
-            <MenuItem value={3}>3度</MenuItem>
-            <MenuItem value={6}>6度</MenuItem>
+            <MenuItem value="3">3度</MenuItem>
+            <MenuItem value="6">6度</MenuItem>
           </TextField>
           <TextField
             select
@@ -58,26 +54,13 @@ export function HarmonyVoice({
       <DialogActions>
         <Button onClick={close}>キャンセル</Button>
         <Button
-          disabled={!notes.length}
           variant="contained"
           onClick={() => {
-            change((section, project) => {
-              const harmony = createTrack('melody', `${track.name} ${interval}度`);
-              const keys = timeline(project).keys;
-              const clip = harmonize(
-                notes,
-                interval,
-                below,
-                (tick) => valueAt(keys, start + tick).key,
-              );
-              if (!clip.length) return;
-              project.tracks.push(harmony);
-              section.notes[harmony.id] = clip;
-            });
+            change((next) => applyHarmony(next, track.id, interval, below));
             close();
           }}
         >
-          トラックを追加
+          {existing ? '曲全体のハモリを更新' : '曲全体のハモリを作成'}
         </Button>
       </DialogActions>
     </Dialog>

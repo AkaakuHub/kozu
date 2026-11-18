@@ -92,6 +92,7 @@ export interface Track {
   name: string;
   kind: TrackKind;
   program?: InstrumentProgram;
+  harmonySource?: string;
   pattern: Pattern;
   gain: number;
   mute: boolean;

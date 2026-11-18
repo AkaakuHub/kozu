@@ -38,6 +38,7 @@ export function Tracks({ project, current, change }: Props) {
       return;
     change((p) => {
       p.tracks = p.tracks.filter((t) => t.id !== id);
+      for (const track of p.tracks) if (track.harmonySource === id) delete track.harmonySource;
       for (const s of p.sections) delete s.notes[id];
       p.effects = p.effects
         .filter((e) => e.kind !== 'octave' || e.trackId !== id)

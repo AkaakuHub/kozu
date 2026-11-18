@@ -356,7 +356,12 @@ export default function App() {
               {
                 label: 'ハモリを作成',
                 icon: AudioLines,
-                disabled: track.kind === 'drums' || !part.notes[track.id]?.length,
+                disabled:
+                  track.kind === 'drums' ||
+                  !(
+                    project.sections.some((section) => section.notes[track.id]?.length) ||
+                    project.tracks.some((voice) => voice.harmonySource === track.id)
+                  ),
                 run: () => open('voice'),
               },
               { label: 'セクション管理', icon: ListMusic, run: () => open('composition') },

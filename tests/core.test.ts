@@ -958,6 +958,49 @@ void test('ハモリは調に沿って3度上または6度下を割り当てる'
   assert.notEqual(third.id, melody[0]!.id);
 });
 
+await test('曲全体のハモリはセクションをまたいで1本にまとまり、再生成と履歴復元で同じトラックを使う', async () => {
+  const { applyHarmony } = await import('../src/core/harmonize.ts');
+  const { projectRows, rowsProject } = await import('../src/core/history/score-rows.ts');
+  const project = createBlankProject();
+  const source = project.tracks[0]!;
+  const first = project.sections[0]!;
+  const empty = createSection('間奏', PPQ * 4);
+  const last = createSection('終奏', PPQ * 4);
+  project.sections.push(empty, last);
+  const lead: Note = {
+    id: 'lead',
+    at: PPQ,
+    duration: PPQ,
+    pitch: { kind: 'absolute', midi: 60 },
+    velocity: 100,
+    origin: 'manual',
+    locked: false,
+  };
+  first.notes[source.id] = [lead];
+  last.notes[source.id] = [{ ...lead, id: 'end', pitch: { kind: 'absolute', midi: 62 } }];
+  const dMajor = { ...key, tonic: 2 };
+  project.keyChanges.push({ id: 'key-change', at: { sectionId: last.id, tick: 0 }, key: dMajor });
+  applyHarmony(project, source.id, 3, false);
+  const voices = project.tracks.filter((track) => track.harmonySource === source.id);
+  assert.equal(voices.length, 1);
+  const id = voices[0]!.id;
+  assert.deepEqual(first.notes[id]?.[0]?.pitch, { kind: 'absolute', midi: 64 });
+  assert.deepEqual(last.notes[id]?.[0]?.pitch, { kind: 'absolute', midi: 66 });
+  assert.equal(empty.notes[id], undefined);
+  const previous = clone(project);
+  applyHarmony(project, source.id, 3, false);
+  assert.deepEqual(project, previous);
+  const reopened = rowsProject(projectRows(project));
+  reopened.sections[0]!.notes[id]![0]!.locked = true;
+  applyHarmony(reopened, source.id, 6, true);
+  assert.equal(reopened.tracks.length, project.tracks.length);
+  assert.equal(reopened.tracks.find((track) => track.harmonySource === source.id)?.id, id);
+  assert.deepEqual(reopened.sections[0]!.notes[id]?.[0]?.pitch, { kind: 'absolute', midi: 64 });
+  assert.deepEqual(reopened.sections[2]!.notes[id]?.[0]?.pitch, { kind: 'absolute', midi: 54 });
+  assert.deepEqual(reopened.sections[0]!.notes[source.id], [lead]);
+  noErrors(reopened);
+});
+
 void test('動機の反行・拡大は範囲外の音符を保持し変更を取り消し可能にする', async () => {
   const { transformMotif } = await import('../src/core/motif.ts');
   const key = { tonic: 0, mode: 'major', preferFlats: false } as const;
