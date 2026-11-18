@@ -247,7 +247,6 @@ export default function App() {
   return (
     <main className="workbench" inert={!session.ready} aria-busy={!session.ready}>
       <MenuBar
-        mode={colorMode}
         menus={[
           {
             label: 'ファイル',
@@ -398,7 +397,6 @@ export default function App() {
         rewind={rewind}
       />
       <Arrangement
-        mode={colorMode}
         project={project}
         notes={draft.notes}
         starts={starts}

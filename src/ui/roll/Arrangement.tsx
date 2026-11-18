@@ -1,4 +1,6 @@
-import { lazy, memo, Suspense, useState } from 'react';
+import { memo, useState } from 'react';
+import { TrackVolumePopup } from '../workbench/TrackVolumePopup.tsx';
+import { ToolButton } from '../workbench/ToolButton.tsx';
 import { Volume2, VolumeX } from 'lucide-react';
 import { PPQ } from '../../core/types.ts';
 import type { Project, RenderedNote } from '../../core/types.ts';
@@ -6,15 +8,8 @@ import { ResizeHandle } from '../workbench/ResizeHandle.tsx';
 import { arrangementRange, trackRange } from '../../core/preferences.ts';
 import type { Preferences } from '../../core/preferences.ts';
 
-const TrackVolumePopup = lazy(() =>
-  import('../workbench/TrackVolumePopup.tsx').then((module) => ({
-    default: module.TrackVolumePopup,
-  })),
-);
-
 interface Props {
   project: Project;
-  mode: 'light' | 'dark';
   notes: RenderedNote[];
   starts: Map<string, number>;
   active: string;
@@ -27,7 +22,6 @@ interface Props {
 }
 export const Arrangement = memo(function Arrangement({
   project,
-  mode,
   notes,
   starts,
   active,
@@ -79,16 +73,20 @@ export const Arrangement = memo(function Arrangement({
                 {track.name}
               </button>
               <span className="track-mix">
-                <button
-                  type="button"
-                  className="tool-button"
-                  aria-haspopup="dialog"
-                  aria-label={`${track.name}の音量ミキサー`}
-                  title={`音量 ${Math.round(track.gain * 100)}%`}
-                  onClick={(event) => setPopup({ id: track.id, anchor: event.currentTarget })}
-                >
-                  {track.mute ? <VolumeX aria-hidden="true" /> : <Volume2 aria-hidden="true" />}
-                </button>
+                <ToolButton
+                  icon={track.mute ? VolumeX : Volume2}
+                  popup="dialog"
+                  popupTarget={popup?.id === track.id ? 'track-volume-popup' : undefined}
+                  label={`${track.name}の音量ミキサー`}
+                  tooltip={`音量 ${Math.round(track.gain * 100)}%`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    const anchor = event.currentTarget;
+                    setPopup((current) =>
+                      current?.id === track.id ? null : { id: track.id, anchor },
+                    );
+                  }}
+                />
               </span>
             </div>
           ))}
@@ -171,21 +169,19 @@ export const Arrangement = memo(function Arrangement({
         }}
       />
       {popupTrack && popup && (
-        <Suspense fallback={null}>
-          <TrackVolumePopup
-            mode={mode}
-            track={popupTrack}
-            anchor={popup.anchor}
-            close={() => setPopup(null)}
-            volume={(gain) =>
-              change((project) => {
-                project.tracks.find((track) => track.id === popupTrack.id)!.gain = gain;
-              })
-            }
-            mute={() => mix(popupTrack.id, 'mute')}
-            solo={() => mix(popupTrack.id, 'solo')}
-          />
-        </Suspense>
+        <TrackVolumePopup
+          key={popupTrack.id}
+          track={popupTrack}
+          anchor={popup.anchor}
+          close={() => setPopup((current) => (current === popup ? null : current))}
+          volume={(gain) =>
+            change((project) => {
+              project.tracks.find((track) => track.id === popupTrack.id)!.gain = gain;
+            })
+          }
+          mute={() => mix(popupTrack.id, 'mute')}
+          solo={() => mix(popupTrack.id, 'solo')}
+        />
       )}
     </div>
   );

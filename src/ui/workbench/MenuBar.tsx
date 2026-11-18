@@ -1,8 +1,7 @@
-import { lazy, Suspense, useState } from 'react';
+import { useState } from 'react';
+import { AppMenu } from './AppMenu.tsx';
 import type { LucideIcon } from 'lucide-react';
 import { AudioLines, Ellipsis } from 'lucide-react';
-
-const AppMenu = lazy(() => import('./AppMenu.tsx').then((module) => ({ default: module.AppMenu })));
 
 interface Command {
   label: string;
@@ -16,12 +15,15 @@ export interface MenuGroup {
   commands: Command[];
   compact?: boolean;
 }
-export function MenuBar({ mode, menus }: { mode: 'light' | 'dark'; menus: MenuGroup[] }) {
+export function MenuBar({ menus }: { menus: MenuGroup[] }) {
   const [open, setOpen] = useState<{ group: string; anchor: HTMLElement } | null>(null);
   const more = open?.group === 'more';
   const groups = more
     ? menus.filter((menu) => !menu.compact)
     : menus.filter((menu) => menu.label === open?.group);
+  const toggle = (group: string, anchor: HTMLElement) => {
+    setOpen((current) => (current?.group === group ? null : { group, anchor }));
+  };
   return (
     <header className="menubar">
       <div className="app-mark">
@@ -36,7 +38,11 @@ export function MenuBar({ mode, menus }: { mode: 'light' | 'dark'; menus: MenuGr
             data-compact={menu.compact}
             aria-haspopup="menu"
             aria-expanded={open?.group === menu.label}
-            onClick={(event) => setOpen({ group: menu.label, anchor: event.currentTarget })}
+            popoverTarget={open?.group === menu.label ? 'app-menu-popup' : undefined}
+            onClick={(event) => {
+              event.preventDefault();
+              toggle(menu.label, event.currentTarget);
+            }}
           >
             {menu.label}
           </button>
@@ -47,15 +53,22 @@ export function MenuBar({ mode, menus }: { mode: 'light' | 'dark'; menus: MenuGr
           aria-label="その他のメニュー"
           aria-haspopup="menu"
           aria-expanded={more}
-          onClick={(event) => setOpen({ group: 'more', anchor: event.currentTarget })}
+          popoverTarget={more ? 'app-menu-popup' : undefined}
+          onClick={(event) => {
+            event.preventDefault();
+            toggle('more', event.currentTarget);
+          }}
         >
           <Ellipsis aria-hidden="true" size={20} />
         </button>
       </nav>
       {open && (
-        <Suspense fallback={null}>
-          <AppMenu mode={mode} anchor={open.anchor} close={() => setOpen(null)} groups={groups} />
-        </Suspense>
+        <AppMenu
+          key={open.group}
+          anchor={open.anchor}
+          close={() => setOpen((current) => (current === open ? null : current))}
+          groups={groups}
+        />
       )}
     </header>
   );

@@ -428,3 +428,76 @@ body {
   display: flex;
   justify-content: flex-end;
 }
+.anchored-popup {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 4px;
+  min-width: min(190px, 92vw);
+  max-width: min(450px, calc(100vw - 8px));
+  max-height: calc(100dvh - 8px);
+  overflow: auto;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 6px 24px #0003;
+  font:
+    13px system-ui,
+    sans-serif;
+}
+.app-menu-item,
+.track-volume-popup button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0 8px;
+  min-height: 32px;
+  border: 0;
+  border-radius: 4px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.app-menu-item {
+  width: 100%;
+}
+.app-menu-item:focus-visible,
+.app-menu-item:hover:not(:disabled),
+.track-volume-popup button[aria-pressed='true'] {
+  outline: none;
+  background: var(--raised);
+}
+.app-menu-item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.menu-heading {
+  color: var(--muted);
+  padding: 7px 8px 3px;
+  font-weight: 600;
+}
+.tool-tooltip {
+  position: fixed;
+  z-index: 1400;
+  max-width: min(226px, calc(100vw - 8px));
+  pointer-events: none;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--ink);
+  background: var(--surface);
+  font:
+    11px system-ui,
+    sans-serif;
+  box-shadow: 0 2px 8px #0002;
+}
+@media (pointer: coarse) {
+  .app-menu-item,
+  .track-volume-popup button {
+    min-height: 42px;
+  }
+}

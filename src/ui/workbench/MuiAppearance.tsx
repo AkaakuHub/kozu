@@ -55,7 +55,9 @@ const create = (mode: 'light' | 'dark') => {
       MuiDialogActions: {
         styleOverrides: { root: { padding: '6px 10px', borderTop: `1px solid ${color.line}` } },
       },
+      MuiSelect: { defaultProps: { MenuProps: { transitionDuration: 0 } } },
       MuiMenu: {
+        defaultProps: { transitionDuration: 0 },
         styleOverrides: {
           paper: { backgroundImage: 'none', border: `1px solid ${color.line}`, minWidth: 180 },
           list: { paddingBlock: 4 },
