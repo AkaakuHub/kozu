@@ -41,6 +41,7 @@ import {
 import { parseProject, validate } from '../src/core/validate.ts';
 import { guitarVoicing } from '../src/core/guitar.ts';
 import { drawnNoteSpan } from '../src/core/roll-editing.ts';
+import { mixLevel, sharesScore } from '../src/core/track-mix.ts';
 import { growSection, measureTicks, minimumSectionLength } from '../src/core/section-length.ts';
 import { scaleRegions } from '../src/core/scale-guide.ts';
 import { parsePreferences } from '../src/core/preferences.ts';
@@ -63,6 +64,24 @@ const noErrors = (p: ReturnType<typeof simple>) =>
     [],
   );
 await test('空の新規プロジェクトは編集可能な譜面として有効', () => noErrors(createBlankProject()));
+await test('ミキサーの変更は試聴の発音を再生成せずMIDIには反映する', () => {
+  const project = scoreFixture();
+  const track = project.tracks[0]!;
+  const muted = { ...track, gain: 0.2, mute: true, solo: true };
+  const next = { ...project, tracks: [muted, ...project.tracks.slice(1)] };
+  assert(sharesScore(project, next));
+  assert.deepEqual(compile(next, 'preview'), compile(project, 'preview'));
+  assert.equal(compile(next).notes.length, 0);
+  assert.equal(mixLevel(muted, true), 0);
+  assert.equal(mixLevel({ ...muted, mute: false }, true, 0.35), 0.35);
+  assert.equal(mixLevel({ ...muted, mute: false, solo: false }, true), 0);
+  assert(
+    !sharesScore(project, {
+      ...next,
+      tracks: [{ ...muted, program: 72 }, ...project.tracks.slice(1)],
+    }),
+  );
+});
 await test('C major third is E, lowering by one semitone gives E-flat', () => {
   assert.equal(resolvePitch({ kind: 'degree', degree: 3, accidental: 0, octave: 4 }, key), 64);
   assert.equal(resolvePitch({ kind: 'degree', degree: 3, accidental: -1, octave: 4 }, key), 63);

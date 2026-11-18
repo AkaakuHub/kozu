@@ -24,6 +24,7 @@ import { compile } from './core/compile.ts';
 import { exportMidi } from './core/midi.ts';
 import { createSection } from './core/presets.ts';
 import { growSection, measureTicks } from './core/section-length.ts';
+import { sharesScore } from './core/track-mix.ts';
 import { sectionStarts, ticksToSeconds, valueAt } from './core/time.ts';
 import { clone } from './core/types.ts';
 import type { Note, Project, Section } from './core/types.ts';
@@ -59,6 +60,7 @@ export default function App() {
   const notePreview = preferences.notePreview ?? true;
   const colorMode = useAppearance(appearance);
   const { project, commit } = session;
+  const previousProject = useRef(project);
   const [timelineTick, setTimelineTick] = useState(0);
   const [windowName, open] = useState<
     WindowName | 'history' | 'commit' | 'projects' | 'registerProject' | null
@@ -141,7 +143,10 @@ export default function App() {
     let started = false;
     setPlayback('loading');
     try {
-      await player.play(song, project, start, end, loop ? first : null, (tick, active) => {
+      const preview = compile(project, 'preview');
+      const issue = preview.diagnostics.find(({ severity }) => severity === 'error');
+      if (issue) throw new Error(issue.message);
+      await player.play(preview, project, start, end, loop ? first : null, (tick, active) => {
         if (request.current !== id) return;
         realHead.current = tick;
         cursorFrame.current?.(tick);
@@ -168,12 +173,15 @@ export default function App() {
       notify(error instanceof Error ? error.message : String(error));
     }
   };
-  const refreshPlayback = useEffectEvent(() => {
+  const refreshPlayback = useEffectEvent((previous: Project) => {
     if (hasErrors) stop();
+    else if (sharesScore(previous, project)) player.mix(project.tracks);
     else if (playback !== 'stopped') void play(realHead.current);
   });
   useEffect(() => {
-    refreshPlayback();
+    const previous = previousProject.current;
+    previousProject.current = project;
+    refreshPlayback(previous);
   }, [project]);
 
   const choosePart = (id: string) => {
@@ -420,7 +428,15 @@ export default function App() {
         }}
         preferences={preferences}
         updatePreferences={updatePreferences}
-        change={change}
+        previewVolume={(id, gain) => player.previewGain(project.tracks, id, gain)}
+        changeMix={(id, patch) =>
+          commit({
+            ...project,
+            tracks: project.tracks.map((track) =>
+              track.id === id ? { ...track, ...patch } : track,
+            ),
+          })
+        }
       />
       <PianoRoll
         key={part.id}

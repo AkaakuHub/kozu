@@ -5,10 +5,7 @@ import { clone, uid } from './types.ts';
 import type { Effect, Note, Position, Project, RenderedNote, Track } from './types.ts';
 
 function render(project: Project) {
-  const song = compile({
-    ...project,
-    tracks: project.tracks.map((track) => ({ ...track, gain: 1, mute: false, solo: false })),
-  });
+  const song = compile(project, 'preview');
   const issue = song.diagnostics.find(({ severity }) => severity === 'error');
   if (issue) throw new Error(issue.message);
   return song.notes;

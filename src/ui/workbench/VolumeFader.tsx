@@ -4,10 +4,12 @@ export function VolumeFader({
   gain,
   label,
   change,
+  preview,
 }: {
   gain: number;
   label: string;
   change: (gain: number) => void;
+  preview: (gain: number) => void;
 }) {
   const [volume, setVolume] = useState(Math.round(gain * 100));
   const committed = useRef(volume);
@@ -31,8 +33,16 @@ export function VolumeFader({
       step={1}
       value={volume}
       aria-valuetext={`${volume}%`}
-      onChange={(event) => setVolume(event.target.valueAsNumber)}
+      onChange={(event) => {
+        const next = event.target.valueAsNumber;
+        setVolume(next);
+        preview(next / 100);
+      }}
       onPointerUp={(event) => apply(event.currentTarget.valueAsNumber)}
+      onPointerCancel={() => {
+        setVolume(committed.current);
+        preview(committed.current / 100);
+      }}
       onKeyUp={(event) => apply(event.currentTarget.valueAsNumber)}
       onBlur={(event) => apply(event.currentTarget.valueAsNumber)}
     />

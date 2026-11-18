@@ -4,6 +4,7 @@ import { ToolButton } from '../workbench/ToolButton.tsx';
 import { SlidersHorizontal } from 'lucide-react';
 import { PPQ } from '../../core/types.ts';
 import type { Project, RenderedNote } from '../../core/types.ts';
+import type { TrackMix } from '../../core/track-mix.ts';
 import { ResizeHandle } from '../workbench/ResizeHandle.tsx';
 import { arrangementRange, trackRange } from '../../core/preferences.ts';
 import type { Preferences } from '../../core/preferences.ts';
@@ -19,7 +20,8 @@ interface Props {
   chooseInstrument: (id: string) => void;
   preferences: Preferences;
   updatePreferences: (preferences: Preferences) => void;
-  change: (update: (project: Project) => void) => void;
+  changeMix: (id: string, patch: Partial<TrackMix>) => void;
+  previewVolume: (id: string, gain: number) => void;
 }
 export const Arrangement = memo(function Arrangement({
   project,
@@ -30,7 +32,8 @@ export const Arrangement = memo(function Arrangement({
   trackId,
   selectTrack,
   chooseInstrument,
-  change,
+  changeMix,
+  previewVolume,
   preferences,
   updatePreferences,
 }: Props) {
@@ -64,15 +67,8 @@ export const Arrangement = memo(function Arrangement({
     if (!bins) occupied.set(id, (bins = new Set()));
     bins.add(Math.floor(start / PPQ));
   }
-  const mix = (id: string, key: 'mute' | 'solo') =>
-    change((next) => {
-      const track = next.tracks.find((item) => item.id === id)!;
-      track[key] = !track[key];
-    });
-  const volume = (id: string, gain: number) =>
-    change((next) => {
-      next.tracks.find((track) => track.id === id)!.gain = gain;
-    });
+  const mix = (track: Project['tracks'][number], key: 'mute' | 'solo') =>
+    changeMix(track.id, { [key]: !track[key] });
   return (
     <div className="arrangement-pane">
       <section
@@ -101,8 +97,9 @@ export const Arrangement = memo(function Arrangement({
                   track={track}
                   showButtons={showButtons}
                   showFader={showFader}
-                  toggle={(key) => mix(track.id, key)}
-                  volume={(gain) => volume(track.id, gain)}
+                  toggle={(key) => mix(track, key)}
+                  volume={(gain) => changeMix(track.id, { gain })}
+                  previewVolume={(gain) => previewVolume(track.id, gain)}
                 />
                 {(!showFader || track.kind !== 'drums') && (
                   <ToolButton
@@ -206,8 +203,9 @@ export const Arrangement = memo(function Arrangement({
           track={popupTrack}
           anchor={popup.anchor}
           close={() => setPopup((current) => (current === popup ? null : current))}
-          volume={(gain) => volume(popupTrack.id, gain)}
-          toggle={(key) => mix(popupTrack.id, key)}
+          volume={(gain) => changeMix(popupTrack.id, { gain })}
+          previewVolume={(gain) => previewVolume(popupTrack.id, gain)}
+          toggle={(key) => mix(popupTrack, key)}
           showButtons={!showButtons}
           showFader={!showFader}
           chooseInstrument={

@@ -7,12 +7,20 @@ import { VolumeFader } from './VolumeFader.tsx';
 interface MixControls {
   track: Track;
   volume: (gain: number) => void;
+  previewVolume: (gain: number) => void;
   toggle: (key: 'mute' | 'solo') => void;
   showButtons: boolean;
   showFader: boolean;
 }
 
-export function TrackMixControls({ track, volume, toggle, showButtons, showFader }: MixControls) {
+export function TrackMixControls({
+  track,
+  volume,
+  previewVolume,
+  toggle,
+  showButtons,
+  showFader,
+}: MixControls) {
   return (
     <>
       {showButtons && (
@@ -33,7 +41,14 @@ export function TrackMixControls({ track, volume, toggle, showButtons, showFader
           />
         </>
       )}
-      {showFader && <VolumeFader gain={track.gain} label={`${track.name}の音量`} change={volume} />}
+      {showFader && (
+        <VolumeFader
+          gain={track.gain}
+          label={`${track.name}の音量`}
+          change={volume}
+          preview={previewVolume}
+        />
+      )}
     </>
   );
 }

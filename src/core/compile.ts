@@ -6,7 +6,10 @@ import { guitarVoicing } from './guitar.ts';
 import { validate } from './validate.ts';
 import { drumHits } from './drums.ts';
 import { midiRouting } from './midi-routing.ts';
-export function compile(project: Project, mode: 'playback' | 'edit' = 'playback'): CompiledSong {
+export function compile(
+  project: Project,
+  mode: 'playback' | 'preview' | 'edit' = 'playback',
+): CompiledSong {
   const diagnostics = validate(project);
   const empty: CompiledSong = {
     notes: [],
@@ -25,8 +28,9 @@ export function compile(project: Project, mode: 'playback' | 'edit' = 'playback'
   const routes = midiRouting(project.tracks);
   const anySolo = project.tracks.some((t) => t.solo);
   const active = project.tracks.filter(
-    (t) => mode === 'edit' || (!t.mute && t.gain > 0 && (!anySolo || t.solo)),
+    (t) => mode !== 'playback' || (!t.mute && t.gain > 0 && (!anySolo || t.solo)),
   );
+  const gains = new Map(active.map((track) => [track.id, mode === 'playback' ? track.gain : 1]));
   let notes: RenderedNote[] = [];
   let serial = 0;
   const add = (
@@ -53,10 +57,7 @@ export function compile(project: Project, mode: 'playback' | 'edit' = 'playback'
       pitch,
       start: Math.max(0, Math.round(start)),
       end: Math.min(totalTicks, Math.round(end)),
-      velocity: Math.max(
-        1,
-        Math.min(127, Math.round(velocity * (mode === 'edit' ? 1 : track.gain))),
-      ),
+      velocity: Math.max(1, Math.min(127, Math.round(velocity * gains.get(track.id)!))),
       channel: routes.get(track.id)!.channel,
       string,
     });
@@ -213,12 +214,7 @@ export function compile(project: Project, mode: 'playback' | 'edit' = 'playback'
           for (const n of existing)
             n.velocity = Math.min(
               127,
-              Math.max(
-                n.velocity,
-                Math.round(
-                  effect.velocity * (project.tracks.find((t) => t.id === n.trackId)?.gain ?? 1),
-                ),
-              ),
+              Math.max(n.velocity, Math.round(effect.velocity * gains.get(n.trackId)!)),
             );
         else
           for (const n of original.filter(
@@ -228,12 +224,7 @@ export function compile(project: Project, mode: 'playback' | 'edit' = 'playback'
               ...n,
               id: `accent-${serial++}`,
               start: effect.tick,
-              velocity: Math.max(
-                n.velocity,
-                Math.round(
-                  effect.velocity * (project.tracks.find((t) => t.id === n.trackId)?.gain ?? 1),
-                ),
-              ),
+              velocity: Math.max(n.velocity, Math.round(effect.velocity * gains.get(n.trackId)!)),
             });
       }
       if (effect.crash) {
