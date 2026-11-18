@@ -1,5 +1,6 @@
-import { useEffect, useEffectEvent, useRef } from 'react';
+import { useEffect, useEffectEvent, useLayoutEffect, useRef } from 'react';
 import type { RefObject } from 'react';
+import { zoomRoll } from '../../core/roll-zoom.ts';
 
 interface Point {
   x: number;
@@ -18,26 +19,29 @@ export function useRollGestures(
   change: (zoom: number) => void,
   cancelDrag: () => void,
 ) {
-  const anchor = useRef<{ time: number; x: number } | null>(null);
-  const level = useRef(zoom);
-  const apply = useEffectEvent((value: number, x: number, pan: number) => {
+  const pending = useRef<{ zoom: number; left: number } | null>(null);
+  const apply = useEffectEvent((factor: number, x: number, pan: number) => {
     const view = viewport.current;
     if (!view) return;
-    const next = Math.min(240, Math.max(24, value));
-    if (Math.abs(level.current - next) < 0.2) {
-      view.scrollLeft -= pan;
+    const current = pending.current ?? { zoom, left: view.scrollLeft };
+    const next = zoomRoll(current, factor, x, pan, keyboardWidth);
+    if (next.zoom === zoom) {
+      if (pending.current) {
+        pending.current = null;
+        change(zoom);
+      }
+      view.scrollLeft = next.left;
       return;
     }
-    anchor.current = { time: (view.scrollLeft + x + pan - keyboardWidth) / level.current, x };
-    change(next);
+    pending.current = next;
+    change(next.zoom);
   });
-  useEffect(() => {
+  useLayoutEffect(() => {
     const view = viewport.current;
-    level.current = zoom;
-    if (!view || !anchor.current) return;
-    view.scrollLeft = anchor.current.time * zoom - anchor.current.x + keyboardWidth;
-    anchor.current = null;
-  }, [viewport, keyboardWidth, zoom]);
+    if (!view || pending.current?.zoom !== zoom) return;
+    view.scrollLeft = pending.current.left;
+    pending.current = null;
+  }, [viewport, zoom]);
 
   const cancel = useEffectEvent(cancelDrag);
   useEffect(() => {
@@ -64,7 +68,7 @@ export function useRollGestures(
         return;
       }
       event.preventDefault();
-      apply(level.current * Math.exp(-event.deltaY * 0.012), scrollPoint(event), 0);
+      apply(Math.exp(-event.deltaY * 0.012), scrollPoint(event), 0);
     };
     const start = (event: TouchEvent) => {
       if (!last && !(event.target instanceof Node && view.contains(event.target))) return;
@@ -97,12 +101,10 @@ export function useRollGestures(
       beginPan();
       event.preventDefault();
       view.scrollTop -= dy;
-      if (b) {
-        const nextGap = distance(a, b);
-        if (gap >= 12 && nextGap >= 12)
-          apply((level.current * nextGap) / gap, point.x - view.getBoundingClientRect().left, dx);
-        gap = nextGap;
-      } else view.scrollLeft -= dx;
+      const nextGap = b ? distance(a, b) : 0;
+      const factor = gap >= 12 && nextGap >= 12 ? nextGap / gap : 1;
+      apply(factor, point.x - view.getBoundingClientRect().left, dx);
+      gap = nextGap;
       last = point;
     };
     const end = (event: TouchEvent) => {

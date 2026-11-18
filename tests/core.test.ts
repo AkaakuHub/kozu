@@ -356,6 +356,20 @@ await test('描きながらノート長を変更でき、固定長ではセク�
   });
 });
 
+await test('ピンチ中のズームと横移動を連続して適用しても指の中央に同じ拍が残る', async () => {
+  const { zoomRoll } = await import('../src/core/roll-zoom.ts');
+  const keyboard = 52;
+  const first = { zoom: 72, left: 144 };
+  const center = 124;
+  const beat = (first.left + center - keyboard) / first.zoom;
+  const second = zoomRoll(first, 1.25, center + 30, 30, keyboard);
+  const third = zoomRoll(second, 1.2, center + 50, 20, keyboard);
+  assert.equal(third.zoom, 108);
+  assert.equal((third.left + center + 50 - keyboard) / third.zoom, beat);
+  assert.equal(zoomRoll(third, 1, center + 70, 20, keyboard).left, third.left - 20);
+  assert.deepEqual(zoomRoll({ zoom: 24, left: 0 }, 0.5, 200, 30, keyboard), { zoom: 24, left: 0 });
+});
+
 await test('三連符の入力はセクション境界がグリッド線の間にあっても曲全体の拍にそろう', () => {
   const step = PPQ / 3;
   const start = 350;
