@@ -1041,6 +1041,49 @@ await test('曲全体のハモリはセクションをまたいで1本にまと�
   noErrors(reopened);
 });
 
+await test('両ブランチで作った同じ旋律のハモリは競合し、解消後も独立した編集を保持する', async () => {
+  const { applyHarmony } = await import('../src/core/harmonize.ts');
+  const { mergeRows } = await import('../src/core/history/revisions.ts');
+  const { projectRows, rowsProject } = await import('../src/core/history/score-rows.ts');
+  const base = createBlankProject();
+  const lead = base.tracks[0]!;
+  const section = base.sections[0]!;
+  section.notes[lead.id] = [makeNote(0, PPQ, 60)];
+  const source = clone(base);
+  const target = clone(base);
+  applyHarmony(source, lead.id, 3, false);
+  applyHarmony(target, lead.id, 6, true);
+  const sourceVoice = source.tracks[1]!;
+  const targetVoice = target.tracks[1]!;
+  source.sections[0]!.notes[lead.id]![0]!.velocity = 101;
+  target.sections[0]!.name = 'サビ';
+  source.effects.push({
+    id: 'harmony-octave',
+    kind: 'octave',
+    at: { sectionId: section.id, tick: 0 },
+    duration: PPQ,
+    trackId: sourceVoice.id,
+    semitones: 12,
+  });
+  const [ancestor, incoming, current] = [base, source, target].map(projectRows);
+  assert.equal(mergeRows(ancestor!, incoming!, current!).conflicts.length, 1);
+  for (const [side, voice, pitch] of [
+    ['source', sourceVoice, 64],
+    ['target', targetVoice, 52],
+  ] as const) {
+    const merged = rowsProject(mergeRows(ancestor!, incoming!, current!, side).rows);
+    assert.deepEqual(
+      merged.tracks.filter((track) => track.harmonySource === lead.id).map((track) => track.id),
+      [voice.id],
+    );
+    assert.equal(resolvePitch(merged.sections[0]!.notes[voice.id]![0]!.pitch, key), pitch);
+    assert.equal(merged.sections[0]!.notes[lead.id]![0]!.velocity, 101);
+    assert.equal(merged.sections[0]!.name, 'サビ');
+    assert.equal(merged.effects.length, side === 'source' ? 1 : 0);
+    noErrors(merged);
+  }
+});
+
 void test('動機の反行・拡大は範囲外の音符を保持し変更を取り消し可能にする', async () => {
   const { transformMotif } = await import('../src/core/motif.ts');
   const key = { tonic: 0, mode: 'major', preferFlats: false } as const;

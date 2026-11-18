@@ -1,5 +1,6 @@
 import { scoreKeys, scoreTables } from './score-rows.ts';
 import type { ScoreRow, ScoreRows, ScoreTable } from './score-rows.ts';
+import { mergeHarmony } from './merge-harmony.ts';
 
 export interface WorkingBranch {
   projectId: string;
@@ -116,5 +117,6 @@ export function mergeRows(
       if (chosen) rows[table].push(chosen);
     }
   }
-  return { rows, conflicts };
+  const preferred = resolve === 'source' ? source : resolve === 'target' ? target : undefined;
+  return { rows, conflicts: [...conflicts, ...mergeHarmony(rows, preferred)] };
 }
