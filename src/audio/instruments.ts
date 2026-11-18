@@ -51,6 +51,7 @@ export function loadInstrument(
   destination: AudioNode,
   voice: ReturnType<typeof previewVoice>,
   pitches: (string | number)[],
+  sampleStep: 1 | 3 = 1,
 ): Smplr {
   let loader = loaders.get(context);
   if (!loader) {
@@ -71,7 +72,7 @@ export function loadInstrument(
   const regions = pitches
     .filter((pitch) => typeof pitch === 'number')
     .map((pitch): SmplrRegion => {
-      const root = Math.max(21, Math.min(108, pitch));
+      const root = Math.max(21, Math.min(108, Math.round(pitch / sampleStep) * sampleStep));
       return {
         sample: pitchName(root, true, true).replace('♭', 'b'),
         keyRange: [pitch, pitch],

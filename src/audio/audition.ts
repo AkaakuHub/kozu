@@ -23,7 +23,7 @@ export class Audition {
       this.current = {
         voice,
         pitch,
-        audio: loadInstrument(this.context, this.output, voice, notes),
+        audio: loadInstrument(this.context, this.output, voice, notes, 3),
       };
     }
     const { audio } = this.current;

@@ -29,13 +29,13 @@ export class Player {
   async audition(track: Track, pitch: number) {
     const request = ++this.previewRequest;
     const context = (this.context ??= new AudioContext());
-    if (context.state !== 'running') await context.resume();
-    if (!this.preview) {
-      const { Audition } = await import('./audition.ts');
-      if (request !== this.previewRequest) return;
-      this.preview ??= new Audition(context, this.output(context));
-    }
-    if (request === this.previewRequest) await this.preview.play(track, pitch);
+    const [, module] = await Promise.all([
+      context.state === 'running' ? undefined : context.resume(),
+      this.preview ? undefined : import('./audition.ts'),
+    ]);
+    if (request !== this.previewRequest) return;
+    if (module) this.preview ??= new module.Audition(context, this.output(context));
+    await this.preview?.play(track, pitch);
   }
 
   stopAudition() {
