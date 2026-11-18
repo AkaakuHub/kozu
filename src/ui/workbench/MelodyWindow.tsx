@@ -9,6 +9,7 @@ import {
   TextField,
 } from '@mui/material';
 import { useState } from 'react';
+import { melodyRhythms } from '../../core/presets.ts';
 import type { MelodyOptions } from '../../core/presets.ts';
 
 export function MelodyWindow({
@@ -44,14 +45,15 @@ export function MelodyWindow({
             label="リズム"
             value={rhythm}
             onChange={(event) => {
-              const value = event.target.value;
-              if (value === 'varied' || value === 'quarters' || value === 'syncopated')
-                setRhythm(value);
+              const option = melodyRhythms.find(([value]) => value === event.target.value);
+              if (option) setRhythm(option[0]);
             }}
           >
-            <MenuItem value="varied">変化をつける</MenuItem>
-            <MenuItem value="quarters">四分音符</MenuItem>
-            <MenuItem value="syncopated">シンコペーション</MenuItem>
+            {melodyRhythms.map(([value, label]) => (
+              <MenuItem key={value} value={value}>
+                {label}
+              </MenuItem>
+            ))}
           </TextField>
           <TextField
             select

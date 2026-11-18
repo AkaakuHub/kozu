@@ -758,6 +758,32 @@ await test('generated melody is deterministic except IDs', () => {
     }));
   assert.deepEqual(clean(generateMelody(s, 'x', 3)), clean(generateMelody(s, 'x', 3)));
 });
+
+await test('旋律生成の三連符と3＋3＋2の発音位置をMIDIの往復で保持する', async () => {
+  const { importMidi } = await import('../src/core/midi-import.ts');
+  const project = createBlankProject();
+  const section = project.sections[0]!;
+  const track = project.tracks[0]!;
+  section.length = 8 * PPQ;
+  const examples = [
+    ['triplets', Array.from({ length: 24 }, (_, i) => (i * PPQ) / 3)],
+    ['tresillo', [0, 1.5, 3, 4, 5.5, 7].map((beat) => beat * PPQ)],
+  ] as const;
+  for (const [rhythm, expected] of examples) {
+    const notes = generateMelody(section, track.id, 7, () => key, { rhythm, octave: 4 });
+    assert.deepEqual(
+      notes.map((note) => note.at),
+      expected,
+    );
+    section.notes[track.id] = notes;
+    const exported = exportMidi(project, compile(project));
+    const imported = compile(importMidi(exported, project.title));
+    assert.deepEqual(
+      imported.notes.map((note) => [note.start, note.end]),
+      notes.map((note) => [note.at, note.at + note.duration]),
+    );
+  }
+});
 await test('out-of-scale notes produce warnings, not errors', () => {
   const p = simple();
   p.sections[0]!.notes[p.tracks[0]!.id] = [

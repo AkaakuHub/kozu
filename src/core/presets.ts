@@ -385,11 +385,19 @@ export function createSection(
     sourceSectionId: null,
   };
 }
-/** Deterministic constrained candidate search. Costs guide candidates, not artistic quality. */
+export const melodyRhythms = [
+  ['varied', '変化をつける'],
+  ['quarters', '四分音符'],
+  ['syncopated', 'シンコペーション'],
+  ['triplets', '八分音符の三連符'],
+  ['tresillo', '3＋3＋2（八分音符）'],
+] as const;
+
 export interface MelodyOptions {
-  rhythm: 'varied' | 'quarters' | 'syncopated';
+  rhythm: (typeof melodyRhythms)[number][0];
   octave: number;
 }
+/** Deterministic constrained candidate search. Costs guide candidates, not artistic quality. */
 export function generateMelody(
   section: Section,
   trackId: string,
@@ -415,12 +423,13 @@ export function generateMelody(
     [0, 1, 1.75, 2.5, 3.5, 4, 5.5, 7],
   ];
   const chosen = rhythms[Math.floor(random() * rhythms.length)]!;
-  const rhythm =
-    options.rhythm === 'quarters'
-      ? [0, 1, 2, 3, 4, 5, 6, 7]
-      : options.rhythm === 'syncopated'
-        ? [0, 0.75, 1.5, 2.75, 3.5, 4, 5.75, 7.5]
-        : chosen;
+  const rhythm = {
+    varied: chosen,
+    quarters: [0, 1, 2, 3, 4, 5, 6, 7],
+    syncopated: [0, 0.75, 1.5, 2.75, 3.5, 4, 5.75, 7.5],
+    triplets: Array.from({ length: 24 }, (_, i) => i / 3),
+    tresillo: [0, 1.5, 3, 4, 5.5, 7],
+  }[options.rhythm];
   const kept = (section.notes[trackId] ?? []).filter((n) => n.locked || n.origin === 'manual');
   const notes: Note[] = [...kept];
   let previous: number | null = null;
@@ -431,7 +440,7 @@ export function generateMelody(
     for (let i = 0; i < rhythm.length; i++) {
       const at = Math.round(base + rhythm[i]! * PPQ);
       if (at >= section.length) continue;
-      const next = base + (rhythm[i + 1] ?? 8) * PPQ;
+      const next = Math.round(base + (rhythm[i + 1] ?? 8) * PPQ);
       const duration = Math.round(Math.min(next - at, section.length - at) * 0.87);
       if (kept.some((n) => n.at < at + duration && n.at + n.duration > at)) continue;
       const key = context(at),
@@ -440,7 +449,12 @@ export function generateMelody(
         ? new Set(chordPitches(chord, key, 4).map((p) => mod(p)))
         : new Set<number>();
       const target = resolvePitch(
-        { kind: 'degree', degree: contour[i]!, accidental: 0, octave: options.octave },
+        {
+          kind: 'degree',
+          degree: contour[i % contour.length]!,
+          accidental: 0,
+          octave: options.octave,
+        },
         key,
       );
       const candidates = Array.from(
