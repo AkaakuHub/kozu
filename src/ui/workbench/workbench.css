@@ -409,13 +409,13 @@ body {
   width: 74px;
   margin-inline: 4px;
 }
-.track-volume-popup {
+.volume-popup {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 4px;
 }
-.track-volume-popup .volume-fader {
+.volume-popup .volume-fader {
   flex: 1;
   min-width: 0;
   min-height: 36px;
@@ -496,10 +496,8 @@ body {
     -webkit-touch-callout: default;
   }
   .app-menu-item,
-  .track-volume-popup .tool-button {
+  .volume-popup .tool-button {
     min-height: 42px;
-  }
-  .track-volume-popup .tool-button {
     min-width: 42px;
   }
 }

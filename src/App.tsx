@@ -22,6 +22,7 @@ import {
 import { Player } from './audio/player.ts';
 import { compile } from './core/compile.ts';
 import { exportMidi } from './core/midi.ts';
+import { defaultMasterGain } from './core/preferences.ts';
 import { createSection } from './core/presets.ts';
 import { growSection, measureTicks } from './core/section-length.ts';
 import { sharesScore } from './core/track-mix.ts';
@@ -58,6 +59,7 @@ export default function App() {
   const appearance = preferences.appearance ?? 'system';
   const scaleGuide = preferences.scaleGuide ?? true;
   const notePreview = preferences.notePreview ?? true;
+  const masterGain = preferences.masterGain ?? defaultMasterGain;
   const colorMode = useAppearance(appearance);
   const { project, commit } = session;
   const previousProject = useRef(project);
@@ -90,6 +92,8 @@ export default function App() {
   const track = project.tracks.find((item) => item.id === trackId) ?? project.tracks[0]!;
   const hasErrors = song.diagnostics.some((item) => item.severity === 'error');
   const playing = playback === 'playing';
+
+  useEffect(() => player.setMasterGain(masterGain), [player, masterGain]);
 
   useEffect(() => {
     return () => player.stopAudition();
@@ -418,6 +422,9 @@ export default function App() {
           toggleLoop();
         }}
         rewind={rewind}
+        masterGain={masterGain}
+        previewMasterGain={(gain) => player.setMasterGain(gain)}
+        changeMasterGain={(gain) => updatePreferences({ masterGain: gain })}
       />
       <Arrangement
         project={project}

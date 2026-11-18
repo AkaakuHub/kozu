@@ -112,6 +112,13 @@ await test('プロフィールはスケールガイドのオフを保存する',
   assert.deepEqual(parsePreferences({ scaleGuide: false }), { scaleGuide: false });
   assert.throws(() => parsePreferences({ scaleGuide: 'false' }));
 });
+await test('マスター音量はゼロと小数を保存でき、AudioParamに渡せない値を拒む', () => {
+  for (const masterGain of [0, 0.58, 1])
+    assert.equal(parsePreferences({ masterGain }).masterGain, masterGain);
+  for (const masterGain of [-1, 1.01, Infinity, NaN, '0.58'])
+    assert.throws(() => parsePreferences({ masterGain }));
+});
+
 await test('描きながらノート長を変更でき、固定長ではセクション末尾に収まる', () => {
   const step = PPQ / 4;
   assert.deepEqual(drawnNoteSpan(PPQ, PPQ, step, 2 * PPQ), { at: PPQ, duration: step });

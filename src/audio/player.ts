@@ -5,12 +5,14 @@ import type { previewVoice } from './instruments.ts';
 import type { Audition } from './audition.ts';
 import { Mixer } from './mixer.ts';
 import { mixLevel } from '../core/track-mix.ts';
+import { defaultMasterGain, isVolume } from '../core/preferences.ts';
 
 type Voice = ReturnType<typeof previewVoice>;
 
 export class Player {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
+  private masterGain = defaultMasterGain;
   private frame: number | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
   private instruments = new Map<string, { voice: Voice; audio: Smplr }>();
@@ -22,10 +24,20 @@ export class Player {
   private output(context: AudioContext) {
     if (!this.master) {
       this.master = context.createGain();
-      this.master.gain.value = 0.58;
+      this.master.gain.value = this.masterGain;
       this.master.connect(context.createDynamicsCompressor()).connect(context.destination);
     }
     return this.master;
+  }
+
+  setMasterGain(gain: number) {
+    if (!isVolume(gain) || this.masterGain === gain) return;
+    this.masterGain = gain;
+    if (this.master && this.context) {
+      const time = this.context.currentTime;
+      this.master.gain.cancelScheduledValues(time);
+      this.master.gain.setTargetAtTime(gain, time, 0.008);
+    }
   }
 
   async audition(track: Track, pitch: number) {

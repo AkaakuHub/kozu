@@ -71,7 +71,7 @@ export function TrackVolumePopup({
       anchor={anchor}
       close={close}
     >
-      <section className="track-volume-popup">
+      <section className="volume-popup">
         <TrackMixControls {...controls} />
         {chooseInstrument && (
           <ToolButton icon={Piano} label="音源ライブラリ" onClick={chooseInstrument} />
