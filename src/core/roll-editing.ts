@@ -57,6 +57,12 @@ export function moveNote(
   };
 }
 
+export function drawnNoteSpan(anchor: number, pointer: number, step: number, limit: number) {
+  const edge = Math.max(0, Math.min(limit, Math.round(pointer / step) * step));
+  const at = Math.min(anchor, edge);
+  return { at, duration: Math.min(limit - at, Math.max(step, Math.abs(edge - anchor))) };
+}
+
 export function placePhrase(notes: Note[], at: number, limit: number): Note[] {
   if (!notes.length) return [];
   const first = notes.reduce((earliest, note) => Math.min(earliest, note.at), Infinity);

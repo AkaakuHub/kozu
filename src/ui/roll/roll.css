@@ -59,6 +59,8 @@
   overscroll-behavior: contain;
   scrollbar-color: #65758c #161e2b;
   background: var(--roll);
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 .roll-view:focus-visible {
   outline: 2px solid #71e3c3;
@@ -172,6 +174,17 @@
 }
 .roll-note[data-selected='true'] {
   outline: 2px solid #fff4bb;
+}
+.roll-note-draft {
+  pointer-events: none;
+}
+.roll-note-resize {
+  position: absolute;
+  inset-block: 0;
+  right: 0;
+  width: min(14px, 45%);
+  border-right: 3px solid #102331;
+  cursor: ew-resize;
 }
 .roll-keys {
   position: sticky;

@@ -40,6 +40,7 @@ import {
 } from '../src/core/time.ts';
 import { parseProject, validate } from '../src/core/validate.ts';
 import { guitarVoicing } from '../src/core/guitar.ts';
+import { drawnNoteSpan } from '../src/core/roll-editing.ts';
 import { scaleRegions } from '../src/core/scale-guide.ts';
 import { parsePreferences } from '../src/core/preferences.ts';
 import { scoreFixture } from './score-fixture.ts';
@@ -90,6 +91,12 @@ await test('スケールガイドはパート開始時点のキーを引き継�
 await test('プロフィールはスケールガイドのオフを保存する', () => {
   assert.deepEqual(parsePreferences({ scaleGuide: false }), { scaleGuide: false });
   assert.throws(() => parsePreferences({ scaleGuide: 'false' }));
+});
+await test('描きながらノート長を変更でき、固定長ではセクション末尾に収まる', () => {
+  const step = PPQ / 4;
+  assert.deepEqual(drawnNoteSpan(PPQ, PPQ, step, 2 * PPQ), { at: PPQ, duration: step });
+  assert.deepEqual(drawnNoteSpan(PPQ, 3 * PPQ, step, 2 * PPQ), { at: PPQ, duration: PPQ });
+  assert.deepEqual(drawnNoteSpan(PPQ, PPQ / 2, step, 2 * PPQ), { at: PPQ / 2, duration: PPQ / 2 });
 });
 await test('all chord types produce positive durations and integer notes', () => {
   const c = makeChords(PROGRESSIONS[0]!, PPQ * 16)[0]!;

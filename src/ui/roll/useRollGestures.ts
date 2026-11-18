@@ -73,7 +73,8 @@ export function useRollGestures(
         last = { x: a.clientX, y: a.clientY };
         singleEdits =
           event.target instanceof Element &&
-          Boolean(event.target.closest('.roll-note[data-selected=true]'));
+          (Boolean(event.target.closest('.roll-note[data-selected=true]')) ||
+            (view.dataset.draw === 'true' && event.target.matches('.roll-grid')));
       }
     };
     const move = (event: TouchEvent) => {

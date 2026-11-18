@@ -1,5 +1,5 @@
 import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent, MouseEvent, PointerEvent, RefObject } from 'react';
+import type { KeyboardEvent, PointerEvent, RefObject } from 'react';
 import { useRollGestures } from './useRollGestures.ts';
 import { RollTools } from './RollTools.tsx';
 import { ScaleGuide } from './ScaleGuide.tsx';
@@ -8,7 +8,13 @@ import { PPQ } from '../../core/types.ts';
 import type { CompiledSong, Note, Project, Section, Track } from '../../core/types.ts';
 import { chordName, inScale, pitchName, resolvePitch } from '../../core/theory.ts';
 import { valueAt } from '../../core/time.ts';
-import { makeNote, materializeNotes, moveNote, placePhrase } from '../../core/roll-editing.ts';
+import {
+  drawnNoteSpan,
+  makeNote,
+  materializeNotes,
+  moveNote,
+  placePhrase,
+} from '../../core/roll-editing.ts';
 const NoteDialog = lazy(() =>
   import('./NoteDialog.tsx').then((module) => ({ default: module.NoteDialog })),
 );
@@ -86,8 +92,14 @@ export function PianoRoll({
   const follow = useRef(true);
   const [range, setRange] = useState({ first: 0, last: PPQ * 24 });
   const drag = useRef<Drag | null>(null);
+  const drawing = useRef<{ pointer: number; anchor: number; midi: number } | null>(null);
+  const [draftNote, setDraftNote] = useState<{ at: number; duration: number; midi: number } | null>(
+    null,
+  );
   useRollGestures(viewport, keyboard, zoom, setZoom, () => {
     drag.current = null;
+    drawing.current = null;
+    setDraftNote(null);
     setDelta({ ticks: 0, pitches: 0 });
   });
   const notes = section.notes[track.id] ?? [];
@@ -297,27 +309,56 @@ export function PianoRoll({
       duration: n.duration,
       lastPitch: pitch,
       mode:
-        tool === 'resize' || (e.pointerType === 'mouse' && end - e.clientX < 8) ? 'resize' : 'move',
+        tool === 'resize' ||
+        (e.target instanceof Element && e.target.closest('.roll-note-resize')) ||
+        (e.pointerType === 'mouse' && end - e.clientX < 8)
+          ? 'resize'
+          : 'move',
     };
     e.currentTarget.setPointerCapture(e.pointerId);
   };
-  const add = (e: MouseEvent<HTMLDivElement>) => {
-    if (e.target !== e.currentTarget || e.button !== 0) return;
-    viewport.current?.focus({ preventScroll: true });
-    if (tool !== 'draw') {
-      select([]);
+  const startNote = (e: PointerEvent<HTMLDivElement>) => {
+    if (
+      e.target !== e.currentTarget ||
+      e.button !== 0 ||
+      !e.isPrimary ||
+      tool !== 'draw' ||
+      !editable
+    )
       return;
-    }
-    if (!editable) return;
+    viewport.current?.focus({ preventScroll: true });
     const rect = e.currentTarget.getBoundingClientRect();
     const at = Math.floor((e.clientX - rect.left) / (px * step)) * step;
     const midi = 127 - Math.floor((e.clientY - rect.top) / row);
     if (at < 0 || at >= section.length || midi < 0 || midi > 127) return;
+    drawing.current = { pointer: e.pointerId, anchor: at, midi };
+    setDraftNote({ at, duration: Math.min(step, section.length - at), midi });
+    e.currentTarget.setPointerCapture(e.pointerId);
+    audition?.(midi);
+  };
+  const drawingAt = (event: PointerEvent<HTMLDivElement>) => {
+    const drawingNote = drawing.current;
+    if (!drawingNote || drawingNote.pointer !== event.pointerId) return null;
+    const tick = (event.clientX - event.currentTarget.getBoundingClientRect().left) / px;
+    return {
+      ...drawnNoteSpan(drawingNote.anchor, tick, step, section.length),
+      midi: drawingNote.midi,
+    };
+  };
+  const cancelDrawing = () => {
+    if (!drawing.current) return;
+    drawing.current = null;
+    setDraftNote(null);
+  };
+  const finishNote = (event: PointerEvent<HTMLDivElement>) => {
+    const draft = drawingAt(event);
+    if (!draft) return;
+    cancelDrawing();
     const note = makeNote(
-      at,
-      Math.min(step, section.length - at),
-      midi,
-      keyFor(at),
+      draft.at,
+      draft.duration,
+      draft.midi,
+      keyFor(draft.at),
       track.kind === 'drums',
     );
     change((s) => {
@@ -381,6 +422,7 @@ export function PianoRoll({
       />
       <div
         className="roll-view"
+        data-draw={tool === 'draw' && editable}
         ref={viewport}
         tabIndex={0}
         onKeyDown={keyboardEdit}
@@ -459,8 +501,38 @@ export function PianoRoll({
               height: 128 * row,
               backgroundSize: `${step * px}px ${row}px, ${zoom}px ${row}px`,
             }}
-            onClick={add}
+            onClick={(event) => {
+              if (event.target === event.currentTarget && tool !== 'draw') {
+                viewport.current?.focus({ preventScroll: true });
+                select([]);
+              }
+            }}
+            onPointerDown={startNote}
+            onPointerMove={(event) => {
+              const draft = drawingAt(event);
+              if (draft)
+                setDraftNote((previous) =>
+                  previous?.at === draft.at && previous.duration === draft.duration
+                    ? previous
+                    : draft,
+                );
+            }}
+            onPointerUp={finishNote}
+            onPointerCancel={cancelDrawing}
+            onLostPointerCapture={cancelDrawing}
           >
+            {draftNote && (
+              <div
+                aria-hidden="true"
+                className="roll-note roll-note-draft"
+                style={{
+                  left: draftNote.at * px,
+                  top: (127 - draftNote.midi) * row + 2,
+                  width: Math.max(4, draftNote.duration * px),
+                  background: color,
+                }}
+              />
+            )}
             {guideKey && (
               <ScaleGuide
                 keys={song.keys}
@@ -589,6 +661,7 @@ export function PianoRoll({
                       }}
                     >
                       <span>{pitchName(pitch, false, true)}</span>
+                      {active && <i aria-hidden="true" className="roll-note-resize" />}
                     </div>
                   );
                 })}
