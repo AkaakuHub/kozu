@@ -55,6 +55,7 @@ export const Arrangement = memo(function Arrangement({
       const width = column.clientWidth;
       const layout = width >= 220 ? 'full' : width >= 150 ? 'buttons' : 'compact';
       setMixLayout(layout);
+      if (layout === 'full') setPopup(null);
     };
     const observer = new ResizeObserver(measure);
     observer.observe(column);
@@ -97,11 +98,16 @@ export const Arrangement = memo(function Arrangement({
                   track={track}
                   showButtons={showButtons}
                   showFader={showFader}
+                  chooseInstrument={
+                    showButtons && track.kind !== 'drums'
+                      ? () => chooseInstrument(track.id)
+                      : undefined
+                  }
                   toggle={(key) => mix(track, key)}
                   volume={(gain) => changeMix(track.id, { gain })}
                   previewVolume={(gain) => previewVolume(track.id, gain)}
                 />
-                {(!showFader || track.kind !== 'drums') && (
+                {!showFader && (
                   <ToolButton
                     icon={SlidersHorizontal}
                     popup="dialog"
@@ -197,7 +203,7 @@ export const Arrangement = memo(function Arrangement({
           updatePreferences({ arrangementHeight });
         }}
       />
-      {popupTrack && popup && (!showFader || popupTrack.kind !== 'drums') && (
+      {popupTrack && popup && !showFader && (
         <TrackVolumePopup
           key={popupTrack.id}
           track={popupTrack}
@@ -209,7 +215,7 @@ export const Arrangement = memo(function Arrangement({
           showButtons={!showButtons}
           showFader={!showFader}
           chooseInstrument={
-            popupTrack.kind === 'drums'
+            showButtons || popupTrack.kind === 'drums'
               ? undefined
               : () => {
                   setPopup(null);

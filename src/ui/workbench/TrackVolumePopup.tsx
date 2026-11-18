@@ -11,6 +11,7 @@ interface MixControls {
   toggle: (key: 'mute' | 'solo') => void;
   showButtons: boolean;
   showFader: boolean;
+  chooseInstrument?: (() => void) | undefined;
 }
 
 export function TrackMixControls({
@@ -20,6 +21,7 @@ export function TrackMixControls({
   toggle,
   showButtons,
   showFader,
+  chooseInstrument,
 }: MixControls) {
   return (
     <>
@@ -41,6 +43,14 @@ export function TrackMixControls({
           />
         </>
       )}
+      {chooseInstrument && (
+        <ToolButton
+          icon={Piano}
+          label={`${track.name}の音源ライブラリ`}
+          tooltip="音源ライブラリ"
+          onClick={chooseInstrument}
+        />
+      )}
       {showFader && (
         <VolumeFader
           gain={track.gain}
@@ -56,12 +66,10 @@ export function TrackMixControls({
 export function TrackVolumePopup({
   anchor,
   close,
-  chooseInstrument,
   ...controls
 }: MixControls & {
   anchor: HTMLElement;
   close: () => void;
-  chooseInstrument: (() => void) | undefined;
 }) {
   return (
     <AnchoredPopup
@@ -73,9 +81,6 @@ export function TrackVolumePopup({
     >
       <section className="volume-popup">
         <TrackMixControls {...controls} />
-        {chooseInstrument && (
-          <ToolButton icon={Piano} label="音源ライブラリ" onClick={chooseInstrument} />
-        )}
       </section>
     </AnchoredPopup>
   );
