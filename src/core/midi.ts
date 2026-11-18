@@ -104,8 +104,9 @@ export function exportMidi(project: Project, song: CompiledSong): Uint8Array {
       track.kind === 'drums' ? track.drumKit && drumKits[track.drumKit].program : track.program;
     if (program !== undefined)
       events.push({ tick: 0, priority: 2, bytes: [0xc0 | channel, program] });
-    for (const br of song.breaks.filter((event) => event.trackId === track.id))
-      events.push({ tick: br.tick, priority: 2, bytes: [0xb0 | channel, 64, 0] });
+    for (const point of song.sustain)
+      if (point.trackId === track.id)
+        events.push({ tick: point.tick, priority: 2, bytes: [0xb0 | channel, 64, point.value] });
     trackChunks.push(encodeTrack(events, song.totalTicks));
   }
   return new Uint8Array([

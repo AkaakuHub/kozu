@@ -54,7 +54,12 @@ export function applyMidiMarkers(project: Project, imported: { tick: number; lab
     const target = at(tick);
     return { sectionId: target.section.id, tick: target.tick };
   };
-  for (const event of [...project.tempoChanges, ...project.keyChanges, ...project.meterChanges])
+  for (const event of [
+    ...project.tempoChanges,
+    ...project.keyChanges,
+    ...project.meterChanges,
+    ...(project.sustain ?? []),
+  ])
     event.at = position(event.at.tick);
   if (annotations.length)
     project.markers = annotations.map(({ tick, label }) => ({

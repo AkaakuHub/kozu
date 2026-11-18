@@ -159,6 +159,10 @@ export function removeSection(project: Project, id: string): Project {
     p.markers = p.markers.filter((e) => e.at.sectionId !== id);
     if (!p.markers.length) delete p.markers;
   }
+  if (p.sustain) {
+    p.sustain = p.sustain.filter((e) => e.at.sectionId !== id);
+    if (!p.sustain.length) delete p.sustain;
+  }
   p.effects = p.effects.filter((e) => e.at.sectionId !== id);
   for (const s of p.sections) if (s.sourceSectionId === id) s.sourceSectionId = null;
   return p;
@@ -203,6 +207,12 @@ export function duplicateSection(project: Project, id: string): Project {
     const markers = p.markers.filter((e) => e.at.sectionId === id);
     p.markers.push(
       ...markers.map((e) => ({ ...e, id: uid('marker'), at: { ...e.at, sectionId: next.id } })),
+    );
+  }
+  if (p.sustain) {
+    const sustain = p.sustain.filter((e) => e.at.sectionId === id);
+    p.sustain.push(
+      ...sustain.map((e) => ({ ...e, id: uid('pedal'), at: { ...e.at, sectionId: next.id } })),
     );
   }
   p.meterChanges.push(

@@ -131,6 +131,11 @@ function projectShape(x: unknown): x is Project {
           object(e) && string(e.id) && pos(e.at) && string(e.label) && e.label.trim().length > 0,
         512,
       )) ||
+    (x.sustain !== undefined &&
+      !array(
+        x.sustain,
+        (e) => object(e) && string(e.id) && pos(e.at) && string(e.trackId) && number(e.value),
+      )) ||
     !array(
       x.tempoChanges,
       (e) =>
@@ -244,6 +249,7 @@ export function validate(project: Project): Diagnostic[] {
     ...project.meterChanges,
     ...project.effects,
     ...(project.markers ?? []),
+    ...(project.sustain ?? []),
   ];
   if (new Set(events.map((e) => e.id)).size !== events.length)
     issue('error', 'duplicate-event', 'イベントのIDが重複しています。');
@@ -252,6 +258,9 @@ export function validate(project: Project): Diagnostic[] {
     if (!s || !ticks(e.at.tick) || e.at.tick >= s.length)
       issue('error', 'event-position', 'イベントの位置がパートの範囲外です。', e.at.sectionId);
   }
+  for (const e of project.sustain ?? [])
+    if (!trackIds.has(e.trackId) || !Number.isInteger(e.value) || !bounded(e.value, 0, 127))
+      issue('error', 'sustain', 'サステインペダルの値またはトラックが不正です。', e.at.sectionId);
   for (const t of project.tempoChanges)
     if (
       !bounded(t.bpm, 20, 400) ||

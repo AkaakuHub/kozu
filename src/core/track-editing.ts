@@ -5,6 +5,10 @@ export function removeTrack(project: Project, id: string): boolean {
   project.tracks = project.tracks.filter((track) => track.id !== id);
   for (const track of project.tracks) if (track.harmonySource === id) delete track.harmonySource;
   for (const section of project.sections) delete section.notes[id];
+  if (project.sustain) {
+    project.sustain = project.sustain.filter((e) => e.trackId !== id);
+    if (!project.sustain.length) delete project.sustain;
+  }
   project.effects = project.effects
     .filter((effect) => effect.kind !== 'octave' || effect.trackId !== id)
     .map((effect) => {

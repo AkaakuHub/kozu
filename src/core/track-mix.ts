@@ -16,6 +16,7 @@ export function sharesScore(a: Project, b: Project): boolean {
     a.tempoChanges === b.tempoChanges &&
     a.keyChanges === b.keyChanges &&
     a.meterChanges === b.meterChanges &&
+    a.sustain === b.sustain &&
     a.tracks.length === b.tracks.length &&
     a.tracks.every((track, index) => {
       const next = b.tracks[index]!;

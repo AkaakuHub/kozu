@@ -1237,6 +1237,72 @@ void test('型付き履歴から譜面を復元しても楽器・テンポ・音
   assert.deepEqual(musical(rebuilt), musical(project));
 });
 
+await test('別トラックのサステインペダルをポートとチャンネルで照合し、MIDIと譜面履歴で保持する', async () => {
+  const { importMidi } = await import('../src/core/midi-import.ts');
+  const { projectRows, rowsProject } = await import('../src/core/history/score-rows.ts');
+  const { writeMidi, parseMidi } = await import('midi-file');
+  const keyboard = (port: number, noteNumber: number) =>
+    [
+      { type: 'portPrefix', meta: true, deltaTime: 0, port },
+      { type: 'noteOn', deltaTime: 0, channel: 0, noteNumber, velocity: 90 },
+      { type: 'noteOff', deltaTime: 240, channel: 0, noteNumber, velocity: 0 },
+      { type: 'endOfTrack', meta: true, deltaTime: 720 },
+    ] as const;
+  const project = importMidi(
+    Uint8Array.from(
+      writeMidi({
+        header: { format: 1, numTracks: 3, ticksPerBeat: PPQ },
+        tracks: [
+          [
+            { type: 'controller', deltaTime: 120, channel: 0, controllerType: 64, value: 96 },
+            { type: 'controller', deltaTime: 600, channel: 0, controllerType: 64, value: 37 },
+            { type: 'endOfTrack', meta: true, deltaTime: 240 },
+          ],
+          [...keyboard(0, 60)],
+          [...keyboard(1, 64)],
+        ],
+      }),
+    ),
+    'ペダル',
+  );
+  const restored = rowsProject(projectRows(project));
+  assert.deepEqual(restored.sustain, project.sustain);
+  const midi = compile(restored);
+  assert.deepEqual(
+    midi.notes.map((n) => [n.pitch, n.end]),
+    [
+      [60, 240],
+      [64, 240],
+    ],
+  );
+  const preview = compile(restored, 'preview');
+  assert.deepEqual(
+    preview.notes.map((n) => [n.pitch, n.end]),
+    [
+      [60, 720],
+      [64, 240],
+    ],
+  );
+  const exported = parseMidi(exportMidi(restored, midi));
+  assert.deepEqual(
+    exported.tracks.map((events) => {
+      let tick = 0;
+      return events.flatMap((e) => {
+        tick += e.deltaTime;
+        return e.type === 'controller' ? [[tick, e.controllerType, e.value]] : [];
+      });
+    }),
+    [
+      [],
+      [
+        [120, 64, 96],
+        [720, 64, 37],
+      ],
+      [],
+    ],
+  );
+});
+
 await test('16本を超えるトラックもMIDIに書き出せて同音が干渉しない', async () => {
   const { importMidi } = await import('../src/core/midi-import.ts');
   const { parseMidi } = await import('midi-file');

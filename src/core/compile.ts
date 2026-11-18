@@ -6,6 +6,7 @@ import { guitarVoicing } from './guitar.ts';
 import { validate } from './validate.ts';
 import { drumHits } from './drums.ts';
 import { midiRouting } from './midi-routing.ts';
+import { extendHeldNotes, sustainPoints } from './sustain.ts';
 export function compile(
   project: Project,
   mode: 'playback' | 'preview' | 'edit' = 'playback',
@@ -19,7 +20,7 @@ export function compile(
     markers: [],
     totalTicks: 0,
     diagnostics,
-    breaks: [],
+    sustain: [],
   };
   if (diagnostics.some((d) => d.severity === 'error')) return empty;
   const starts = sectionStarts(project);
@@ -290,11 +291,10 @@ export function compile(
         }
     }
   }
-  const breaks: CompiledSong['breaks'] = [];
+  const breaks: { tick: number; trackId: string }[] = [];
   for (const effect of absoluteEffects) {
     if (effect.kind === 'break') {
-      for (const id of effect.tracks)
-        breaks.push({ tick: effect.tick, end: effect.tick + effect.duration, trackId: id });
+      for (const id of effect.tracks) breaks.push({ tick: effect.tick, trackId: id });
       notes = notes.flatMap((n) => {
         if (
           !effect.tracks.includes(n.trackId) ||
@@ -324,6 +324,17 @@ export function compile(
         return result;
       });
   }
+  const sustain = sustainPoints(project, starts, breaks);
+  if (mode === 'preview' && sustain.length) {
+    const drums = new Set(
+      project.tracks.filter((track) => track.kind === 'drums').map(({ id }) => id),
+    );
+    extendHeldNotes(
+      notes,
+      sustain.filter(({ trackId }) => !drums.has(trackId)),
+      totalTicks,
+    );
+  }
   // Prevent MIDI note-off and guitar string collisions within one track.
   notes.sort((a, b) => a.start - b.start || a.pitch - b.pitch);
   const last = new Map<string, RenderedNote>();
@@ -344,7 +355,7 @@ export function compile(
     ...maps,
     totalTicks,
     diagnostics,
-    breaks,
+    sustain,
     markers,
   };
 }

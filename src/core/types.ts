@@ -156,6 +156,7 @@ export interface Project {
   tracks: Track[];
   tempoChanges: TempoChange[];
   markers?: { id: string; at: Position; label: string }[];
+  sustain?: { id: string; at: Position; trackId: string; value: number }[];
   keyChanges: KeyChange[];
   meterChanges: MeterChange[];
   effects: Effect[];
@@ -197,7 +198,7 @@ export interface CompiledSong {
   markers: { tick: number; label: string }[];
   totalTicks: number;
   diagnostics: Diagnostic[];
-  breaks: { tick: number; end: number; trackId: string }[];
+  sustain: { tick: number; trackId: string; value: number }[];
 }
 export function uid(prefix = 'id'): string {
   return `${prefix}-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;

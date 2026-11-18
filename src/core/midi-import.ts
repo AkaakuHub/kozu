@@ -42,8 +42,11 @@ export function importMidi(bytes: Uint8Array, title: string): Project {
   };
   let last = 0;
   const markers: { tick: number; label: string }[] = [];
+  const sustainByRoute = new Map<number, { tick: number; value: number }[]>();
+  const importedTracks: { id: string; route: number }[] = [];
   for (const events of tracks) {
     let elapsed = 0;
+    let port = 0;
     const name = trackName(events.find((e) => e.type === 'trackName')?.text ?? '').trim();
     const programs = new Map<number, InstrumentProgram>();
     const parts = new Map<number, Note[]>();
@@ -53,6 +56,7 @@ export function importMidi(bytes: Uint8Array, title: string): Project {
       const tick = toTicks(elapsed);
       const at = { sectionId: section.id, tick };
       last = Math.max(last, tick);
+      if (event.type === 'portPrefix') port = event.port;
       if (event.type === 'marker') {
         const label = trackName(event.text).trim();
         if (label) markers.push({ tick, label });
@@ -80,13 +84,20 @@ export function importMidi(bytes: Uint8Array, title: string): Project {
       }
       if (
         event.type === 'programChange' &&
-        !programs.has(event.channel) &&
-        !parts.has(event.channel) &&
+        !programs.has(16 * port + event.channel) &&
+        !parts.has(16 * port + event.channel) &&
         isInstrumentProgram(event.programNumber)
       )
-        programs.set(event.channel, event.programNumber);
+        programs.set(16 * port + event.channel, event.programNumber);
+      if (event.type === 'controller' && event.controllerType === 64) {
+        const route = 16 * port + event.channel;
+        let points = sustainByRoute.get(route);
+        if (!points) sustainByRoute.set(route, (points = []));
+        points.push({ tick, value: event.value });
+      }
       if (event.type !== 'noteOn' && event.type !== 'noteOff') continue;
-      const code = event.channel * 128 + event.noteNumber;
+      const route = 16 * port + event.channel;
+      const code = route * 128 + event.noteNumber;
       let queue = active.get(code);
       if (event.type === 'noteOn' && event.velocity > 0) {
         if (!queue) active.set(code, (queue = []));
@@ -95,8 +106,8 @@ export function importMidi(bytes: Uint8Array, title: string): Project {
       }
       const note = queue?.shift();
       if (!note) continue;
-      let clip = parts.get(event.channel);
-      if (!clip) parts.set(event.channel, (clip = []));
+      let clip = parts.get(route);
+      if (!clip) parts.set(route, (clip = []));
       const duration = Math.max(1, tick - note.at);
       last = Math.max(last, note.at + duration);
       clip.push({
@@ -108,14 +119,15 @@ export function importMidi(bytes: Uint8Array, title: string): Project {
         locked: true,
       });
     }
-    for (const [channel, clip] of parts) {
+    for (const [route, clip] of parts) {
+      const channel = route % 16;
       const label = name || `トラック ${project.tracks.length + 1}`;
       const track = createTrack(
         channel === 9 ? 'drums' : 'melody',
         parts.size === 1 ? label : `${label} (${channel + 1})`,
       );
       track.gain = 1;
-      const program = programs.get(channel);
+      const program = programs.get(route);
       if (program !== undefined) {
         if (channel !== 9) track.program = program;
         else {
@@ -124,6 +136,7 @@ export function importMidi(bytes: Uint8Array, title: string): Project {
         }
       }
       project.tracks.push(track);
+      importedTracks.push({ id: track.id, route });
       section.notes[track.id] = clip;
     }
   }
@@ -134,6 +147,19 @@ export function importMidi(bytes: Uint8Array, title: string): Project {
       events.map((event) => event.at.tick + 1),
     ),
   );
+  for (const { id: trackId, route } of importedTracks) {
+    const points = sustainByRoute.get(route);
+    if (!points) continue;
+    for (const { tick, value } of points.toSorted((a, b) => a.tick - b.tick)) {
+      (project.sustain ??= []).push({
+        id: uid('pedal'),
+        at: { sectionId: section.id, tick },
+        trackId,
+        value,
+      });
+      section.length = Math.max(section.length, tick + 1);
+    }
+  }
   applyMidiMarkers(project, markers);
   const errors = validate(project).filter((diagnostic) => diagnostic.severity === 'error');
   if (errors.length) throw new Error(errors[0]!.message);

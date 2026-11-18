@@ -38,6 +38,15 @@ function decodePitch(row: ScoreRow, prefix = '') {
 }
 function events(project: Project): ScoreRow[] {
   return [
+    ...(project.sustain ?? []).map((e, pos) => ({
+      id: e.id,
+      pos,
+      kind: 'sustain',
+      section_id: e.at.sectionId,
+      tick: e.at.tick,
+      track_id: e.trackId,
+      pedal_value: e.value,
+    })),
     ...(project.markers ?? []).map((e, pos) => ({
       id: e.id,
       pos,
@@ -244,6 +253,14 @@ export function rowsProject(rows: ScoreRows): Project {
   const clipGroup = group(rows.score_clips, ['section_id']);
   const effectGroup = group(rows.score_effect_tracks, ['effect_id']);
   const sortedEvents = rows.score_events.toSorted(byPosition);
+  const sustain = sortedEvents
+    .filter((row) => row.kind === 'sustain')
+    .map((row) => ({
+      id: row.id,
+      at: position(row),
+      trackId: row.track_id,
+      value: row.pedal_value,
+    }));
   const markers = sortedEvents
     .filter((row) => row.kind === 'marker')
     .map((row) => ({ id: row.id, at: position(row), label: row.label }));
@@ -252,6 +269,7 @@ export function rowsProject(rows: ScoreRows): Project {
     title: header.title,
     seed: header.seed,
     ...(markers.length ? { markers } : {}),
+    ...(sustain.length ? { sustain } : {}),
     initialTempo: header.tempo,
     initialKey: key(header),
     initialMeter: meter(header),
@@ -332,7 +350,12 @@ export function rowsProject(rows: ScoreRows): Project {
       .map((r) => ({ id: r.id, at: position(r), ...meter(r) })),
     effects: sortedEvents
       .filter(
-        (r) => r.kind !== 'tempo' && r.kind !== 'key' && r.kind !== 'meter' && r.kind !== 'marker',
+        (r) =>
+          r.kind !== 'tempo' &&
+          r.kind !== 'key' &&
+          r.kind !== 'meter' &&
+          r.kind !== 'marker' &&
+          r.kind !== 'sustain',
       )
       .map((r) => {
         const tracks = effectGroup(r.id)
