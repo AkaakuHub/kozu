@@ -32,6 +32,7 @@
   font-weight: 750;
   color: var(--accent);
   letter-spacing: -0.025em;
+  text-decoration: none;
 }
 .menubar nav {
   display: flex;
@@ -363,9 +364,6 @@ body {
   background: var(--surface);
   color: var(--ink);
   box-shadow: 0 8px 30px #0003;
-}
-.start-error {
-  padding: 16px;
 }
 .arrangement-pane {
   min-width: 0;

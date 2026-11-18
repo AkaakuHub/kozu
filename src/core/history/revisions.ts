@@ -5,6 +5,7 @@ export interface WorkingBranch {
   projectId: string;
   branch: string;
   head: string;
+  fingerprint?: string;
 }
 export interface ScoreCommit {
   id: string;

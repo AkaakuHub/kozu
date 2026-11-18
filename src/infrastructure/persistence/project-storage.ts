@@ -13,7 +13,14 @@ function branchRef(value: unknown): WorkingBranch | null {
     typeof value.branch === 'string' &&
     typeof value.head === 'string' &&
     typeof value.projectId === 'string'
-    ? { branch: value.branch, head: value.head, projectId: value.projectId }
+    ? {
+        branch: value.branch,
+        head: value.head,
+        projectId: value.projectId,
+        ...('fingerprint' in value && typeof value.fingerprint === 'string'
+          ? { fingerprint: value.fingerprint }
+          : {}),
+      }
     : null;
 }
 function openDB(): Promise<IDBDatabase> {

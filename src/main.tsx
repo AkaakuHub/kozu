@@ -1,7 +1,9 @@
-import { Component, StrictMode } from 'react';
+import { Component, lazy, StrictMode, Suspense } from 'react';
 import type { ErrorInfo, ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import App from './App.tsx';
+const Page = lazy(() =>
+  location.pathname === '/editor' ? import('./App.tsx') : import('./ui/history/ProjectLibrary.tsx'),
+);
 
 class ErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
   override state: { error: string | null } = { error: null };
@@ -29,7 +31,9 @@ if (!root) throw new Error('root element missing');
 createRoot(root).render(
   <StrictMode>
     <ErrorBoundary>
-      <App />
+      <Suspense fallback={null}>
+        <Page />
+      </Suspense>
     </ErrorBoundary>
   </StrictMode>,
 );

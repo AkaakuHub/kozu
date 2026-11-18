@@ -15,6 +15,7 @@ import type { Project } from '../../core/types.ts';
 import { MuiAppearance } from '../workbench/MuiAppearance.tsx';
 import type { WorkingBranch } from '../../core/history/revisions.ts';
 import { commonAncestor } from '../../core/history/revisions.ts';
+import { committedBranch } from '../../core/history/fingerprint.ts';
 import {
   HistoryError,
   readHistory,
@@ -109,7 +110,7 @@ export function HistoryWindow({ project, working, mark, load, close, commitMode,
     void run(async () => {
       const result = await send({ op: 'commit', branch, expected, message, score: project });
       if (typeof result.id === 'string') {
-        mark({ projectId, branch, head: result.id });
+        mark(await committedBranch({ projectId, branch, head: result.id }, project));
         select(result.id);
       }
       setMessage('');
@@ -123,7 +124,8 @@ export function HistoryWindow({ project, working, mark, load, close, commitMode,
         )
       )
         return;
-      load(await readRevision(projectId, head), { projectId, branch, head });
+      const score = await readRevision(projectId, head);
+      load(score, await committedBranch({ projectId, branch, head }, score));
       select(head);
       close();
     });
@@ -138,7 +140,8 @@ export function HistoryWindow({ project, working, mark, load, close, commitMode,
         message: message.trim() || `復元 ${revision.slice(0, 7)}`,
       });
       if (typeof result.id === 'string') {
-        load(await readRevision(projectId, result.id), { projectId, branch, head: result.id });
+        const score = await readRevision(projectId, result.id);
+        load(score, await committedBranch({ projectId, branch, head: result.id }, score));
         select(result.id);
         setMessage('');
       }

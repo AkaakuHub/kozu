@@ -22,6 +22,7 @@ import {
 import { Player } from './audio/player.ts';
 import { compile } from './core/compile.ts';
 import { exportMidi } from './core/midi.ts';
+import { hasUncommittedChanges } from './core/history/fingerprint.ts';
 import { defaultMasterGain } from './core/preferences.ts';
 import { createSection } from './core/presets.ts';
 import { growSection, measureTicks } from './core/section-length.ts';
@@ -29,7 +30,8 @@ import { sharesScore } from './core/track-mix.ts';
 import { sectionStarts, ticksToSeconds, valueAt } from './core/time.ts';
 import { clone } from './core/types.ts';
 import type { Note, Project, Section } from './core/types.ts';
-import { parseProject } from './core/validate.ts';
+import { importScore } from './infrastructure/persistence/import-score.ts';
+import { loadDraft } from './infrastructure/persistence/project-storage.ts';
 import { Arrangement } from './ui/roll/Arrangement.tsx';
 import { PianoRoll } from './ui/roll/PianoRoll.tsx';
 import { download } from './infrastructure/persistence/download.ts';
@@ -45,8 +47,8 @@ import './ui/workbench/workbench.css';
 const HistoryWindow = lazy(() =>
   import('./ui/history/HistoryWindow.tsx').then((module) => ({ default: module.HistoryWindow })),
 );
-const ProjectLibrary = lazy(() =>
-  import('./ui/history/ProjectLibrary.tsx').then((module) => ({ default: module.ProjectLibrary })),
+const ProjectForm = lazy(() =>
+  import('./ui/history/ProjectLibrary.tsx').then((module) => ({ default: module.ProjectForm })),
 );
 const Windows = lazy(() =>
   import('./ui/workbench/Windows.tsx').then((module) => ({ default: module.Windows })),
@@ -64,9 +66,10 @@ export default function App() {
   const { project, commit } = session;
   const previousProject = useRef(project);
   const [timelineTick, setTimelineTick] = useState(0);
-  const [windowName, open] = useState<
-    WindowName | 'history' | 'commit' | 'projects' | 'registerProject' | null
-  >(null);
+  const [windowName, open] = useState<WindowName | 'history' | 'commit' | 'registerProject' | null>(
+    null,
+  );
+  const [leaving, setLeaving] = useState(false);
   const [partId, setPart] = useState('');
   const [trackId, setTrack] = useState('');
   const [head, setHead] = useState(0);
@@ -205,14 +208,13 @@ export default function App() {
   };
   const openFile = async (file: File) => {
     try {
-      if (file.size > 5_000_000) throw new Error('5MB以内のファイルを選択してください。');
-      const next = /\.midi?$/i.test(file.name)
-        ? (await import('./core/midi-import.ts')).importMidi(
-            new Uint8Array(await file.arrayBuffer()),
-            file.name.replace(/\.midi?$/i, ''),
-          )
-        : parseProject(await file.text());
-      commit(next);
+      if (
+        (!session.working || (await loadDraft(null))) &&
+        !window.confirm('端末の下書きを置き換えますか？')
+      )
+        return;
+      const next = await importScore(file);
+      await session.replace(next, null);
       focusProject(next);
     } catch (error) {
       notify(error instanceof Error ? error.message : String(error));
@@ -251,6 +253,25 @@ export default function App() {
   const saveCloud = () => {
     if (!hasErrors) open(session.working ? 'commit' : 'registerProject');
   };
+  const goHome = async () => {
+    if (leaving) return;
+    setLeaving(true);
+    try {
+      if (
+        (await hasUncommittedChanges(project, session.working)) &&
+        !window.confirm(
+          'コミットしていない変更があります。端末に下書きを残してプロジェクト一覧へ戻りますか？',
+        )
+      )
+        return;
+      await session.flush();
+      location.assign('/');
+    } catch (error) {
+      notify(error instanceof Error ? error.message : String(error));
+    } finally {
+      setLeaving(false);
+    }
+  };
   const toggleLoop = () => {
     stop();
     setLoop(!loop);
@@ -265,7 +286,7 @@ export default function App() {
       redo: () => session.redo?.(),
       loop: toggleLoop,
     },
-    windowName !== null || !session.ready,
+    windowName !== null || !session.ready || leaving,
   );
   useEffect(() => {
     if (!message) return;
@@ -274,18 +295,18 @@ export default function App() {
   }, [message]);
 
   return (
-    <main className="workbench" inert={!session.ready} aria-busy={!session.ready}>
+    <main
+      className="workbench"
+      inert={!session.ready || leaving}
+      aria-busy={!session.ready || leaving}
+    >
       <MenuBar
+        goHome={() => void goHome()}
         menus={[
           {
             label: 'ファイル',
             compact: true,
             commands: [
-              {
-                label: 'プロジェクト一覧',
-                icon: LibraryBig,
-                run: () => open('projects'),
-              },
               {
                 label: 'MIDI・JSONを開く',
                 icon: FolderOpen,
@@ -501,12 +522,10 @@ export default function App() {
           </span>
         )}
       </footer>
-      {(windowName === 'projects' || windowName === 'registerProject') && (
+      {windowName === 'registerProject' && (
         <Suspense fallback={null}>
-          <ProjectLibrary
+          <ProjectForm
             project={project}
-            working={session.working}
-            register={windowName === 'registerProject'}
             mode={colorMode}
             load={async (next, working) => {
               await session.replace(next, working);
@@ -536,7 +555,6 @@ export default function App() {
       {windowName &&
         windowName !== 'history' &&
         windowName !== 'commit' &&
-        windowName !== 'projects' &&
         windowName !== 'registerProject' && (
           <Suspense fallback={null}>
             <Windows

@@ -101,6 +101,11 @@ export function useProject(notify: (message: string) => void) {
     redo: history.future.length ? redo : null,
     working,
     mark,
+    flush: async () => {
+      if (storageBlocked) throw new Error('端末への保存を再開してから移動してください。');
+      if (project !== lastSaved?.project || working !== lastSaved.working)
+        await saveProject(project, working);
+    },
     storageBlocked,
     resumeSaving: () => setStorageBlocked(false),
     saved: project === lastSaved?.project && working === lastSaved.working,

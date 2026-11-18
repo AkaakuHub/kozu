@@ -15,7 +15,7 @@ export interface MenuGroup {
   commands: Command[];
   compact?: boolean;
 }
-export function MenuBar({ menus }: { menus: MenuGroup[] }) {
+export function MenuBar({ menus, goHome }: { menus: MenuGroup[]; goHome: () => void }) {
   const [open, setOpen] = useState<{ group: string; anchor: HTMLElement } | null>(null);
   const more = open?.group === 'more';
   const groups = more
@@ -26,10 +26,19 @@ export function MenuBar({ menus }: { menus: MenuGroup[] }) {
   };
   return (
     <header className="menubar">
-      <div className="app-mark">
+      <a
+        className="app-mark"
+        href="/"
+        aria-label="kozuのプロジェクト一覧"
+        onClick={(event) => {
+          if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+          event.preventDefault();
+          goHome();
+        }}
+      >
         <AudioLines size={18} aria-hidden="true" />
         <span>kozu</span>
-      </div>
+      </a>
       <nav aria-label="アプリメニュー">
         {menus.map((menu) => (
           <button

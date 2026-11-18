@@ -64,6 +64,21 @@ const noErrors = (p: ReturnType<typeof simple>) =>
     [],
   );
 await test('空の新規プロジェクトは編集可能な譜面として有効', () => noErrors(createBlankProject()));
+await test('コミット後に編集して端末に保存しても未コミットと判定し、取り消すと判定が戻る', async () => {
+  const { committedBranch, hasUncommittedChanges } =
+    await import('../src/core/history/fingerprint.ts');
+  const original = createBlankProject();
+  const branch = await committedBranch(
+    { projectId: 'project', branch: 'main', head: 'commit' },
+    original,
+  );
+  assert.equal(await hasUncommittedChanges(parseProject(JSON.stringify(original)), branch), false);
+  const edit = clone(original);
+  edit.sections[0]!.name = '間奏';
+  assert.equal(await hasUncommittedChanges(parseProject(JSON.stringify(edit)), branch), true);
+  assert.equal(await hasUncommittedChanges(original, branch), false);
+  assert.equal(await hasUncommittedChanges(edit, null), true);
+});
 await test('ミキサーの変更は試聴の発音を再生成せずMIDIには反映する', () => {
   const project = scoreFixture();
   const track = project.tracks[0]!;
