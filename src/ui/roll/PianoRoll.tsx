@@ -2,6 +2,7 @@ import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState } from 'reac
 import type { KeyboardEvent, MouseEvent, PointerEvent, RefObject } from 'react';
 import { useRollGestures } from './useRollGestures.ts';
 import { RollTools } from './RollTools.tsx';
+import { ScaleGuide } from './ScaleGuide.tsx';
 import type { RollTool } from './RollTools.tsx';
 import { PPQ } from '../../core/types.ts';
 import type { CompiledSong, Note, Project, Section, Track } from '../../core/types.ts';
@@ -25,6 +26,7 @@ interface Props {
   mode: 'light' | 'dark';
   start: number;
   song: CompiledSong;
+  scaleGuide: boolean;
   playhead: number;
   cursorTick: RefObject<number>;
   cursorFrame: RefObject<((tick: number) => void) | null>;
@@ -56,6 +58,7 @@ export function PianoRoll({
   mode,
   start,
   song,
+  scaleGuide,
   playhead,
   cursorFrame,
   cursorTick,
@@ -93,6 +96,10 @@ export function PianoRoll({
   const px = zoom / PPQ;
   const width = Math.max(1, section.length * px);
   const position = playhead - start;
+  const guideKey =
+    scaleGuide && track.kind !== 'drums' && song.keys.length > 0
+      ? keyFor(Math.max(0, Math.min(section.length - 1, position)))
+      : null;
   const color = shades[project.tracks.indexOf(track) % shades.length];
   const local = useMemo(
     () => song.notes.filter((n) => n.start >= start && n.start < start + section.length),
@@ -447,6 +454,15 @@ export function PianoRoll({
             }}
             onClick={add}
           >
+            {guideKey && (
+              <ScaleGuide
+                keys={song.keys}
+                start={start}
+                length={section.length}
+                pixelsPerTick={px}
+                rowHeight={row}
+              />
+            )}
             {chords.map((chord) => (
               <i key={chord.id} className="roll-chord" style={{ left: chord.at * px }} />
             ))}
@@ -567,11 +583,7 @@ export function PianoRoll({
                 <div
                   key={midi}
                   data-black={name.includes('♯')}
-                  data-scale={
-                    editable &&
-                    track.kind !== 'drums' &&
-                    inScale(midi, keyFor(Math.max(0, position)))
-                  }
+                  data-scale={guideKey !== null && inScale(midi, guideKey)}
                 >
                   {name}
                 </div>

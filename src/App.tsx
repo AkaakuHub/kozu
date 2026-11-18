@@ -52,6 +52,7 @@ export default function App() {
   const session = useProject(notify);
   const { preferences, update: updatePreferences } = usePreferences(notify);
   const appearance = preferences.appearance ?? 'system';
+  const scaleGuide = preferences.scaleGuide ?? true;
   const colorMode = useAppearance(appearance);
   const { project, commit } = session;
   const [timelineTick, setTimelineTick] = useState(0);
@@ -416,6 +417,7 @@ export default function App() {
         mode={colorMode}
         start={sectionStart}
         song={draft}
+        scaleGuide={scaleGuide}
         playhead={head}
         cursorFrame={cursorFrame}
         cursorTick={realHead}
@@ -476,6 +478,8 @@ export default function App() {
             mode={colorMode}
             appearance={appearance}
             setAppearance={(value) => updatePreferences({ appearance: value })}
+            scaleGuide={scaleGuide}
+            setScaleGuide={(value) => updatePreferences({ scaleGuide: value })}
             open={open}
             close={() => open(null)}
             project={project}

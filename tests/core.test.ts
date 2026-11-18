@@ -17,6 +17,7 @@ import {
   CHORDS,
   transposeKey,
   degreePitch,
+  inScale,
   SCALES,
 } from '../src/core/theory.ts';
 import { compile } from '../src/core/compile.ts';
@@ -39,6 +40,8 @@ import {
 } from '../src/core/time.ts';
 import { parseProject, validate } from '../src/core/validate.ts';
 import { guitarVoicing } from '../src/core/guitar.ts';
+import { scaleRegions } from '../src/core/scale-guide.ts';
+import { parsePreferences } from '../src/core/preferences.ts';
 import { scoreFixture } from './score-fixture.ts';
 const key = { tonic: 0, mode: 'major', preferFlats: false } as const;
 function simple() {
@@ -64,6 +67,30 @@ await test('C major third is E, lowering by one semitone gives E-flat', () => {
 });
 await test('absolute MIDI pitches do not follow the key', () =>
   assert.equal(resolvePitch({ kind: 'absolute', midi: 60 }, transposeKey(key, 3)), 60));
+await test('スケールガイドはパート開始時点のキーを引き継ぎ、転調の拍で切り替わる', () => {
+  const dMajor = transposeKey(key, 2);
+  const keys = [
+    { tick: 0, key },
+    { tick: PPQ * 3, key: dMajor },
+  ];
+  const regions = scaleRegions(keys, PPQ * 2, PPQ * 4);
+  assert.deepEqual(
+    regions.map(({ start, end }) => [start, end]),
+    [
+      [PPQ * 2, PPQ * 3],
+      [PPQ * 3, PPQ * 4],
+    ],
+  );
+  assert.deepEqual(
+    regions.map((region) => inScale(66, region.key)),
+    [false, true],
+  );
+  assert.equal(scaleRegions(keys, PPQ * 3, PPQ * 4)[0]?.key, dMajor);
+});
+await test('プロフィールはスケールガイドのオフを保存する', () => {
+  assert.deepEqual(parsePreferences({ scaleGuide: false }), { scaleGuide: false });
+  assert.throws(() => parsePreferences({ scaleGuide: 'false' }));
+});
 await test('all chord types produce positive durations and integer notes', () => {
   const c = makeChords(PROGRESSIONS[0]!, PPQ * 16)[0]!;
   for (const q of Object.keys(CHORDS) as Chord['quality'][]) {

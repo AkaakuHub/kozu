@@ -125,6 +125,13 @@
   background: repeating-linear-gradient(to bottom, transparent 0 21px, var(--grid) 21px 22px);
   pointer-events: none;
 }
+.roll-scale-guide {
+  --scale-note: color-mix(in srgb, var(--accent) 12%, transparent);
+  --scale-tonic: color-mix(in srgb, var(--accent) 26%, transparent);
+  position: absolute;
+  inset-block: 0;
+  pointer-events: none;
+}
 .roll-chord,
 .roll-playhead {
   position: absolute;

@@ -4,8 +4,10 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   MenuItem,
   Stack,
+  Switch,
   TextField,
 } from '@mui/material';
 import { lazy, Suspense, useState } from 'react';
@@ -64,6 +66,8 @@ export function Windows({
   mode,
   appearance,
   setAppearance,
+  scaleGuide,
+  setScaleGuide,
   open,
   close,
   project,
@@ -83,6 +87,8 @@ export function Windows({
   mode: 'light' | 'dark';
   appearance: Appearance;
   setAppearance: (value: Appearance) => void;
+  scaleGuide: boolean;
+  setScaleGuide: (value: boolean) => void;
   open: (name: WindowName) => void;
   close: () => void;
   project: Project;
@@ -192,21 +198,32 @@ export function Windows({
                   'エラーはありません。'
                 ))}
               {view === 'settings' && (
-                <TextField
-                  select
-                  label="外観"
-                  value={appearance}
-                  fullWidth
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    if (value === 'light' || value === 'dark' || value === 'system')
-                      setAppearance(value);
-                  }}
-                >
-                  <MenuItem value="system">端末の設定</MenuItem>
-                  <MenuItem value="light">ライト</MenuItem>
-                  <MenuItem value="dark">ダーク</MenuItem>
-                </TextField>
+                <Stack spacing={1}>
+                  <TextField
+                    select
+                    label="外観"
+                    value={appearance}
+                    fullWidth
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value === 'light' || value === 'dark' || value === 'system')
+                        setAppearance(value);
+                    }}
+                  >
+                    <MenuItem value="system">端末の設定</MenuItem>
+                    <MenuItem value="light">ライト</MenuItem>
+                    <MenuItem value="dark">ダーク</MenuItem>
+                  </TextField>
+                  <FormControlLabel
+                    label="スケール内の音を強調"
+                    control={
+                      <Switch
+                        checked={scaleGuide}
+                        onChange={(_, checked) => setScaleGuide(checked)}
+                      />
+                    }
+                  />
+                </Stack>
               )}
               {view === 'section' && (
                 <Stack
