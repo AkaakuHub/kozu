@@ -7,6 +7,8 @@ import { useRollGestures } from './useRollGestures.ts';
 import { RollRuler } from './RollRuler.tsx';
 import { RollTools } from './RollTools.tsx';
 import { ScaleGuide } from './ScaleGuide.tsx';
+import { SustainLane } from './SustainLane.tsx';
+import { editSustain } from '../../core/sustain-editing.ts';
 import type { RollTool } from './RollTools.tsx';
 import { clone, PPQ } from '../../core/types.ts';
 import type { CompiledSong, Note, Project, Section, Track } from '../../core/types.ts';
@@ -32,10 +34,14 @@ import {
 const NoteDialog = lazy(() =>
   import('./NoteDialog.tsx').then((module) => ({ default: module.NoteDialog })),
 );
+const SustainDialog = lazy(() =>
+  import('./SustainDialog.tsx').then((module) => ({ default: module.SustainDialog })),
+);
 import './roll.css';
 
 const row = 22;
 const ruler = 72;
+const pedalHeight = 40;
 const keyboard = 52;
 const shades = ['#71e3c3', '#b1a8ff', '#ffc17d', '#8ebeff', '#ff9dbb'];
 
@@ -106,6 +112,11 @@ export function PianoRoll({
   const [step, setStep] = useState(PPQ / 4);
   const [zoom, setZoom] = useState(72);
   const [ghosts, setGhosts] = useState(true);
+  const [showSustain, setShowSustain] = useState(false);
+  const [pedal, setPedal] = useState<{ id: string | null; tick: number; value: number } | null>(
+    null,
+  );
+  const headerHeight = ruler + (showSustain ? pedalHeight : 0);
   const [delta, setDelta] = useState({ ticks: 0, pitches: 0 });
   const viewport = useRef<HTMLDivElement>(null);
   const cursor = useRef<HTMLDivElement>(null);
@@ -130,6 +141,16 @@ export function PianoRoll({
     setDelta({ ticks: 0, pitches: 0 });
   });
   const notes = useMemo(() => trackNotes(project, track.id, starts), [project, track.id, starts]);
+  const sustainPoints = useMemo(
+    () =>
+      showSustain
+        ? (project.sustain ?? [])
+            .filter((point) => point.trackId === track.id)
+            .map(({ id, at, value }) => ({ id, tick: starts.get(at.sectionId)! + at.tick, value }))
+            .sort((a, b) => a.tick - b.tick)
+        : [],
+    [showSustain, project.sustain, starts, track.id],
+  );
   const selectedIds = useMemo(() => new Set(selected), [selected]);
   const auto = autoClip(section, track);
   const selectedNote = notes.find((n) => n.id === selected.at(-1));
@@ -184,6 +205,7 @@ export function PianoRoll({
     nextDrag.current = null;
     select([]);
     setDetail(false);
+    setPedal(null);
   }, [track.id]);
 
   useLayoutEffect(() => {
@@ -485,6 +507,11 @@ export function PianoRoll({
         setZoom={setZoom}
         ghosts={ghosts}
         toggleGhosts={() => setGhosts(!ghosts)}
+        sustain={showSustain}
+        toggleSustain={() => {
+          setPedal(null);
+          setShowSustain(!showSustain);
+        }}
         generate={() => {
           if (!auto && track.kind === 'melody') {
             openMelody();
@@ -518,28 +545,43 @@ export function PianoRoll({
       >
         <div
           className="roll-content"
-          style={{ width: width + keyboard, height: 128 * row + ruler }}
+          style={{ width: width + keyboard, height: 128 * row + headerHeight }}
         >
-          <RollRuler
-            project={project}
-            section={section}
-            starts={starts}
-            chords={visibleChords}
-            keyFor={song.keys.length ? keyFor : undefined}
-            range={range}
-            editLimit={editLimit}
-            total={total}
-            width={width}
-            keyboard={keyboard}
-            pixelsPerTick={px}
-            step={step}
-            seek={seek}
-            editTempo={editTempo}
-          />
+          <div className="roll-header">
+            <RollRuler
+              project={project}
+              section={section}
+              starts={starts}
+              chords={visibleChords}
+              keyFor={song.keys.length ? keyFor : undefined}
+              range={range}
+              editLimit={editLimit}
+              total={total}
+              width={width}
+              keyboard={keyboard}
+              pixelsPerTick={px}
+              step={step}
+              seek={seek}
+              editTempo={editTempo}
+            />
+            {showSustain && (
+              <SustainLane
+                points={sustainPoints}
+                range={range}
+                total={total}
+                height={pedalHeight}
+                px={px}
+                step={step}
+                cursor={cursorTick}
+                select={setPedal}
+              />
+            )}
+          </div>
           <div
             className="roll-grid"
             style={{
               width,
+              top: headerHeight,
               height: 128 * row,
               backgroundSize: `${step * px}px ${row}px, ${zoom}px ${row}px`,
             }}
@@ -830,6 +872,20 @@ export function PianoRoll({
             update={(patch) => patchNotes((n) => (n.id === selectedNote.id ? patch : undefined))}
             remove={remove}
             close={() => setDetail(false)}
+          />
+        </Suspense>
+      )}
+      {showSustain && pedal && (
+        <Suspense fallback={null}>
+          <SustainDialog
+            mode={mode}
+            point={pedal}
+            total={total}
+            apply={(edit) => {
+              const next = clone(project);
+              if (editSustain(next, starts, track.id, pedal.id, edit)) commit(next);
+            }}
+            close={() => setPedal(null)}
           />
         </Suspense>
       )}

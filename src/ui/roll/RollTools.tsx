@@ -3,6 +3,7 @@ import {
   Copy,
   CopyPlus,
   ClipboardPaste,
+  Footprints,
   Layers3,
   MousePointer2,
   Pencil,
@@ -42,6 +43,8 @@ interface Props {
   setZoom: (zoom: number) => void;
   ghosts: boolean;
   toggleGhosts: () => void;
+  sustain: boolean;
+  toggleSustain: () => void;
   generate: () => void;
 }
 export function RollTools({
@@ -66,6 +69,8 @@ export function RollTools({
   setZoom,
   ghosts,
   toggleGhosts,
+  sustain,
+  toggleSustain,
   generate,
 }: Props) {
   return (
@@ -178,6 +183,12 @@ export function RollTools({
         label="他トラックの音符を表示"
         pressed={ghosts}
         onClick={toggleGhosts}
+      />
+      <ToolButton
+        icon={Footprints}
+        label="サステインペダルを表示"
+        pressed={sustain}
+        onClick={toggleSustain}
       />
       {auto ? (
         <button type="button" className="roll-command" disabled={!valid} onClick={generate}>

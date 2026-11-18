@@ -54,7 +54,7 @@ export function timeline(project: Project): {
 function dedupe<T extends { tick: number }>(events: T[]): T[] {
   return [...new Map(events.sort((a, b) => a.tick - b.tick).map((e) => [e.tick, e])).values()];
 }
-export function valueAt<T extends { tick: number }>(events: T[], tick: number): T {
+export function valueIndexAt(events: readonly { tick: number }[], tick: number): number {
   let lo = 0,
     hi = events.length - 1;
   while (lo < hi) {
@@ -62,7 +62,10 @@ export function valueAt<T extends { tick: number }>(events: T[], tick: number): 
     if (events[mid]!.tick <= tick) lo = mid;
     else hi = mid - 1;
   }
-  return events[lo]!;
+  return lo;
+}
+export function valueAt<T extends { tick: number }>(events: T[], tick: number): T {
+  return events[valueIndexAt(events, tick)]!;
 }
 export function keyAt(project: Project, position: Position): Key {
   return valueAt(timeline(project).keys, absolutePosition(position, sectionStarts(project))).key;

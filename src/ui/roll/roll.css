@@ -69,10 +69,12 @@
 .roll-content {
   position: relative;
 }
-.roll-ruler {
+.roll-header {
   position: sticky;
   z-index: 4;
   top: 0;
+}
+.roll-ruler {
   height: 72px;
   display: flex;
   background: var(--surface);
@@ -146,13 +148,64 @@
 }
 .roll-grid {
   position: absolute;
-  top: 72px;
   left: 52px;
   overflow: hidden;
   background-image:
     linear-gradient(to right, var(--line) 1px, transparent 1px),
     linear-gradient(to right, var(--grid) 1px, transparent 1px);
   background-repeat: repeat;
+}
+.roll-pedal {
+  display: flex;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  font:
+    11px ui-monospace,
+    monospace;
+}
+.roll-pedal-track {
+  position: relative;
+  overflow: hidden;
+  background-image: linear-gradient(to right, var(--grid) 1px, transparent 1px);
+}
+.roll-pedal-level,
+.roll-pedal-add,
+.roll-pedal-point {
+  position: absolute;
+}
+.roll-pedal-level {
+  height: 1px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.roll-pedal-add,
+.roll-pedal-point {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.roll-pedal-add {
+  inset: 0;
+  width: 100%;
+  cursor: crosshair;
+}
+.roll-pedal-add:focus-visible {
+  outline-offset: -2px;
+}
+.roll-pedal-point {
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%);
+}
+.roll-pedal-point::after {
+  content: '';
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: auto;
+  border-radius: 50%;
+  background: var(--accent);
 }
 .roll-grid::before {
   content: '';

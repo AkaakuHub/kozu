@@ -1303,6 +1303,33 @@ await test('別トラックのサステインペダルをポートとチャン�
   );
 });
 
+await test('ペダルの編集は移動先のセクションに紐づき、他トラックの同じ位置には影響しない', async () => {
+  const { editSustain } = await import('../src/core/sustain-editing.ts');
+  const project = createBlankProject();
+  const first = project.sections[0]!;
+  const second = createSection('次', PPQ * 4, null);
+  const track = project.tracks[0]!;
+  const other = createTrack('melody');
+  project.sections.push(second);
+  project.tracks.push(other);
+  const starts = sectionStarts(project);
+  assert.equal(editSustain(project, starts, track.id, null, { tick: PPQ, value: 127 }), true);
+  assert.equal(editSustain(project, starts, other.id, null, { tick: PPQ, value: 64 }), true);
+  const id = project.sustain![0]!.id;
+  assert.throws(() => editSustain(project, starts, track.id, null, { tick: PPQ, value: 0 }));
+  const edit = { tick: first.length + 120, value: 37 };
+  assert.equal(editSustain(project, starts, track.id, id, edit), true);
+  assert.deepEqual(project.sustain![0], {
+    id,
+    trackId: track.id,
+    at: { sectionId: second.id, tick: 120 },
+    value: 37,
+  });
+  assert.equal(editSustain(project, starts, track.id, id, edit), false);
+  assert.equal(editSustain(project, starts, track.id, id, null), true);
+  assert.deepEqual(compile(project).sustain, [{ tick: PPQ, trackId: other.id, value: 64 }]);
+});
+
 await test('16本を超えるトラックもMIDIに書き出せて同音が干渉しない', async () => {
   const { importMidi } = await import('../src/core/midi-import.ts');
   const { parseMidi } = await import('midi-file');
