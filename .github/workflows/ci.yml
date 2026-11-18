@@ -28,6 +28,8 @@ jobs:
           run-install: false
           cache: true
       - run: pnpm install --frozen-lockfile
+      - name: Validate D1 migrations locally
+        run: pnpm run db:migrate:local
       - run: pnpm run check
       - run: pnpm exec cf deploy --prebuilt --mode production --dry-run
       - name: Migrate and deploy to Cloudflare
