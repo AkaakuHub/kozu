@@ -40,7 +40,7 @@ import {
 } from '../src/core/time.ts';
 import { parseProject, validate } from '../src/core/validate.ts';
 import { guitarVoicing } from '../src/core/guitar.ts';
-import { drawnNoteSpan } from '../src/core/roll-editing.ts';
+import { copyPhrase, drawnNoteSpan, makeNote, placePhrase } from '../src/core/roll-editing.ts';
 import { mixLevel, sharesScore } from '../src/core/track-mix.ts';
 import { growSection, measureTicks, minimumSectionLength } from '../src/core/section-length.ts';
 import { scaleRegions } from '../src/core/scale-guide.ts';
@@ -132,6 +132,24 @@ await test('マスター音量はゼロと小数を保存でき、AudioParamに�
     assert.equal(parsePreferences({ masterGain }).masterGain, masterGain);
   for (const masterGain of [-1, 1.01, Infinity, NaN, '0.58'])
     assert.throws(() => parsePreferences({ masterGain }));
+});
+
+await test('ロールで入力した音や別のキーへ貼り付けた音は元のMIDI音高を保つ', () => {
+  const nextKey = { ...key, tonic: 2 };
+  const first = makeNote(PPQ, PPQ / 2, 64);
+  const second: Note = { ...first, id: 'relative', at: PPQ * 2, pitch: degreePitch(66, nextKey) };
+  const copied = copyPhrase([first, second], (tick) => (tick < PPQ * 2 ? key : nextKey));
+  const pasted = placePhrase(copied, 0, PPQ * 4);
+  assert.equal(resolvePitch(first.pitch, nextKey), 64);
+  assert.deepEqual(
+    pasted.map((note) => [note.at, note.duration, resolvePitch(note.pitch, key)]),
+    [
+      [0, PPQ / 2, 64],
+      [PPQ, PPQ / 2, 66],
+    ],
+  );
+  assert.notEqual(pasted[1]!.id, second.id);
+  assert.deepEqual(placePhrase(copied, PPQ * 3, PPQ * 4), []);
 });
 
 await test('描きながらノート長を変更でき、固定長ではセクション末尾に収まる', () => {

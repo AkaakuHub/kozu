@@ -62,7 +62,9 @@ export function MotifWindow({
   };
   return (
     <Dialog open onClose={close} maxWidth="xs" fullWidth>
-      <DialogTitle>フレーズを変形 · {track.name}</DialogTitle>
+      <DialogTitle>
+        フレーズを変形 · {section.name} / {track.name}
+      </DialogTitle>
       <DialogContent>
         <Stack gap={2}>
           <TextField

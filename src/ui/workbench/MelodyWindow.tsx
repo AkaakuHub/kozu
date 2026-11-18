@@ -13,10 +13,12 @@ import type { MelodyOptions } from '../../core/presets.ts';
 
 export function MelodyWindow({
   track,
+  section,
   close,
   apply,
 }: {
   track: string;
+  section: string;
   close: () => void;
   apply: (options: MelodyOptions) => void;
 }) {
@@ -24,7 +26,9 @@ export function MelodyWindow({
   const [octave, setOctave] = useState(4);
   return (
     <Dialog open onClose={close} maxWidth="xs" fullWidth>
-      <DialogTitle>旋律を生成 · {track}</DialogTitle>
+      <DialogTitle>
+        旋律を生成 · {section} / {track}
+      </DialogTitle>
       <DialogContent>
         <Stack
           gap={2}

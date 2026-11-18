@@ -13,6 +13,7 @@ import {
   drawnNoteSpan,
   makeNote,
   materializeNotes,
+  copyPhrase,
   moveNote,
   placePhrase,
 } from '../../core/roll-editing.ts';
@@ -209,6 +210,7 @@ export function PianoRoll({
     setDetail(false);
   };
   const selectedNotes = () => notes.filter((note) => selected.includes(note.id));
+  const copy = () => copyNotes(copyPhrase(selectedNotes(), keyFor));
   const stamp = (group: Note[], at: number) => {
     const placed = placePhrase(group, at, editLimit);
     if (!placed.length) {
@@ -224,7 +226,7 @@ export function PianoRoll({
     const group = selectedNotes();
     if (group.length)
       stamp(
-        group,
+        copyPhrase(group, keyFor),
         group.reduce((end, note) => Math.max(end, note.at + note.duration), 0),
       );
   };
@@ -252,9 +254,9 @@ export function PianoRoll({
     const key = e.key.toLowerCase();
     if (e.ctrlKey || e.metaKey) {
       if (key === 'a') select(notes.map((note) => note.id));
-      else if (key === 'c' && selectedNote) copyNotes(selectedNotes());
+      else if (key === 'c' && selectedNote) copy();
       else if (key === 'x' && selectedNote) {
-        copyNotes(selectedNotes());
+        copy();
         remove();
       } else if (key === 'v' && clipboard.length) paste();
       else if (key === 'd' && selectedNote) duplicate();
@@ -356,13 +358,7 @@ export function PianoRoll({
     const draft = drawingAt(event);
     if (!draft) return;
     cancelDrawing();
-    const note = makeNote(
-      draft.at,
-      draft.duration,
-      draft.midi,
-      keyFor(draft.at),
-      track.kind === 'drums',
-    );
+    const note = makeNote(draft.at, draft.duration, draft.midi);
     change((s) => {
       s.notes[track.id] = [...notes, note];
     });
@@ -381,7 +377,7 @@ export function PianoRoll({
         hasNotes={notes.length > 0}
         openDetails={() => setDetail(true)}
         duplicate={duplicate}
-        copy={() => copyNotes(selectedNotes())}
+        copy={copy}
         paste={paste}
         canPaste={clipboard.length > 0 && editable}
         remove={remove}
@@ -408,16 +404,14 @@ export function PianoRoll({
             return;
           }
           if (auto) setTool('select');
+          else if (
+            notes.length &&
+            !window.confirm('このセクションの編集済みの音符を自動伴奏に置き換えますか？')
+          )
+            return;
           change((section) => {
             if (auto)
-              section.notes[track.id] = materializeNotes(
-                local,
-                track.id,
-                start,
-                section.length,
-                keyFor,
-                track.kind === 'drums',
-              );
+              section.notes[track.id] = materializeNotes(local, track.id, start, section.length);
             else delete section.notes[track.id];
           });
         }}

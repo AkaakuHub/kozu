@@ -131,6 +131,7 @@ export function Windows({
         ) : view === 'melody' ? (
           <MelodyWindow
             track={track.name}
+            section={section.name}
             close={close}
             apply={(options) => {
               changeSection((section, next) => {

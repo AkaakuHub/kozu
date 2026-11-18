@@ -1,19 +1,13 @@
-import { degreePitch } from './theory.ts';
+import { degreePitch, resolvePitch } from './theory.ts';
 import { uid } from './types.ts';
 import type { Key, Note, RenderedNote } from './types.ts';
 
-export function makeNote(
-  at: number,
-  duration: number,
-  midi: number,
-  key: Key,
-  fixed: boolean,
-): Note {
+export function makeNote(at: number, duration: number, midi: number): Note {
   return {
     id: uid('note'),
     at,
     duration,
-    pitch: fixed ? { kind: 'absolute', midi } : degreePitch(midi, key),
+    pitch: { kind: 'absolute', midi },
     velocity: 88,
     origin: 'manual',
     locked: true,
@@ -25,19 +19,11 @@ export function materializeNotes(
   trackId: string,
   start: number,
   length: number,
-  keyFor: (at: number) => Key,
-  fixed: boolean,
 ): Note[] {
   return notes
     .filter((n) => n.trackId === trackId && n.start >= start && n.start < start + length)
     .map((n) => ({
-      ...makeNote(
-        n.start - start,
-        Math.min(n.end - start, length) - (n.start - start),
-        n.pitch,
-        keyFor(n.start - start),
-        fixed,
-      ),
+      ...makeNote(n.start - start, Math.min(n.end - start, length) - (n.start - start), n.pitch),
       velocity: n.velocity,
     }));
 }
@@ -73,5 +59,12 @@ export function placePhrase(notes: Note[], at: number, limit: number): Note[] {
     id: uid('note'),
     origin: 'manual',
     locked: true,
+  }));
+}
+
+export function copyPhrase(notes: Note[], keyAt: (at: number) => Key): Note[] {
+  return notes.map((note) => ({
+    ...note,
+    pitch: { kind: 'absolute', midi: resolvePitch(note.pitch, keyAt(note.at)) },
   }));
 }
