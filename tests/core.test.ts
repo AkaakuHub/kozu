@@ -41,6 +41,7 @@ import {
 import { parseProject, validate } from '../src/core/validate.ts';
 import { guitarVoicing } from '../src/core/guitar.ts';
 import { drawnNoteSpan } from '../src/core/roll-editing.ts';
+import { growSection, measureTicks, minimumSectionLength } from '../src/core/section-length.ts';
 import { scaleRegions } from '../src/core/scale-guide.ts';
 import { parsePreferences } from '../src/core/preferences.ts';
 import { scoreFixture } from './score-fixture.ts';
@@ -97,6 +98,30 @@ await test('描きながらノート長を変更でき、固定長ではセク�
   assert.deepEqual(drawnNoteSpan(PPQ, PPQ, step, 2 * PPQ), { at: PPQ, duration: step });
   assert.deepEqual(drawnNoteSpan(PPQ, 3 * PPQ, step, 2 * PPQ), { at: PPQ, duration: PPQ });
   assert.deepEqual(drawnNoteSpan(PPQ, PPQ / 2, step, 2 * PPQ), { at: PPQ / 2, duration: PPQ / 2 });
+});
+await test('自動のセクションは小節単位で伸び、手動の長さは保持する', () => {
+  const project = createBlankProject();
+  const section = project.sections[0]!;
+  const measure = measureTicks(project.initialMeter);
+  const before = section.length;
+  section.notes[project.tracks[0]!.id] = [
+    {
+      id: 'extended',
+      at: before,
+      duration: PPQ,
+      pitch: { kind: 'absolute', midi: 60 },
+      velocity: 90,
+      origin: 'manual',
+      locked: true,
+    },
+  ];
+  assert.equal(minimumSectionLength(project, section), before + PPQ);
+  growSection(project, section, measure);
+  assert.equal(section.length, before + measure);
+  delete section.autoExtend;
+  section.length = before;
+  growSection(project, section, measure);
+  assert.equal(section.length, before);
 });
 await test('all chord types produce positive durations and integer notes', () => {
   const c = makeChords(PROGRESSIONS[0]!, PPQ * 16)[0]!;

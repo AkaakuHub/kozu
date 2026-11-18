@@ -23,7 +23,8 @@ import {
 import { Player } from './audio/player.ts';
 import { compile } from './core/compile.ts';
 import { exportMidi } from './core/midi.ts';
-import { createBlankProject, createSection, generateMelody } from './core/presets.ts';
+import { createBlankProject, createSection } from './core/presets.ts';
+import { growSection, measureTicks } from './core/section-length.ts';
 import { sectionStarts, ticksToSeconds, valueAt } from './core/time.ts';
 import { clone } from './core/types.ts';
 import type { Note, Project, Section } from './core/types.ts';
@@ -75,6 +76,11 @@ export default function App() {
   const starts = useMemo(() => sectionStarts(project), [project]);
   const part = project.sections.find((item) => item.id === partId) ?? project.sections[0]!;
   const sectionStart = starts.get(part.id)!;
+  const sectionMeasure = measureTicks(
+    song.meters.length
+      ? valueAt(song.meters, sectionStart + part.length - 1)
+      : project.initialMeter,
+  );
   const track = project.tracks.find((item) => item.id === trackId) ?? project.tracks[0]!;
   const hasErrors = song.diagnostics.some((item) => item.severity === 'error');
   const playing = playback === 'playing';
@@ -89,12 +95,11 @@ export default function App() {
     commit(next);
   };
   const changeSection = (update: (section: Section, project: Project) => void) =>
-    change((next) =>
-      update(
-        next.sections.find((item) => item.id === part.id)!,
-        next,
-      ),
-    );
+    change((next) => {
+      const section = next.sections.find((item) => item.id === part.id)!;
+      update(section, next);
+      growSection(next, section, sectionMeasure);
+    });
 
   const position = (tick: number) => {
     realHead.current = tick;
@@ -209,11 +214,10 @@ export default function App() {
     setTimelineTick(Math.max(0, Math.min(part.length - 1, tick)));
     open('timeline');
   };
-  const add = (name: string, ticks: number) => {
+  const add = (name: string, ticks: number, autoExtend: boolean) => {
     const next = clone(project);
-    const section = createSection(name, ticks);
-    const lead = next.tracks.find((item) => item.kind === 'melody');
-    if (lead) section.notes[lead.id] = generateMelody(section, lead.id, next.seed);
+    const section = createSection(name, ticks, null);
+    if (autoExtend) section.autoExtend = true;
     next.sections.splice(next.sections.findIndex((item) => item.id === part.id) + 1, 0, section);
     commit(next);
     setPart(section.id);
@@ -346,7 +350,7 @@ export default function App() {
                 disabled: track.kind === 'drums' || !part.notes[track.id]?.length,
                 run: () => open('voice'),
               },
-              { label: '曲の構成', icon: ListMusic, run: () => open('composition') },
+              { label: 'セクション管理', icon: ListMusic, run: () => open('composition') },
               { label: 'コード進行', icon: Music2, run: () => open('harmony') },
               { label: 'コード進行ライブラリ', icon: LibraryBig, run: () => open('progressions') },
               { label: '作曲技法', icon: WandSparkles, run: () => open('technique') },
@@ -424,6 +428,7 @@ export default function App() {
         track={track}
         mode={colorMode}
         start={sectionStart}
+        sectionMeasure={sectionMeasure}
         song={draft}
         scaleGuide={scaleGuide}
         audition={
@@ -505,6 +510,7 @@ export default function App() {
             section={part}
             song={song}
             sectionStart={sectionStart}
+            sectionMeasure={sectionMeasure}
             commit={commit}
             change={change}
             changeSection={changeSection}

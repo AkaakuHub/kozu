@@ -131,6 +131,7 @@ export function projectRows(project: Project): ScoreRows {
       role: section.role,
       variant: section.variant,
       length: section.length,
+      auto_extend: Number(section.autoExtend === true),
       source: section.sourceSectionId,
     })),
     score_clips: project.sections.flatMap((section) =>
@@ -266,6 +267,7 @@ export function rowsProject(rows: ScoreRows): Project {
       role: s.role,
       variant: s.variant,
       length: s.length,
+      ...(s.auto_extend === 1 ? { autoExtend: true } : {}),
       sourceSectionId: s.source,
       chords: chordGroup(s.id)
         .toSorted(byTick)

@@ -82,6 +82,7 @@ const section = (x: unknown): boolean =>
   string(x.role) &&
   ['normal', 'drop', 'final'].includes(String(x.variant)) &&
   number(x.length) &&
+  (x.autoExtend === undefined || bool(x.autoExtend)) &&
   array(x.chords, chord, 2048) &&
   object(x.notes) &&
   Object.values(x.notes).every((ns) => array(ns, note, 20000)) &&

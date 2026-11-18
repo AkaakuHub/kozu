@@ -1,9 +1,22 @@
-import { Box, Button, Chip, Stack, TextField, Typography } from '@mui/material';
+import {
+  Box,
+  Button,
+  Chip,
+  FormControlLabel,
+  List,
+  ListItemButton,
+  ListItemText,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
+} from '@mui/material';
 import { PPQ } from '../../core/types.ts';
 import type { CompiledSong, Effect, Project, Section } from '../../core/types.ts';
 import { duplicateSection, removeSection } from '../../core/editing.ts';
 import { keyAt, ticksToSeconds, valueAt } from '../../core/time.ts';
 import { keyName } from '../../core/theory.ts';
+import { minimumSectionLength, sectionLimit } from '../../core/section-length.ts';
 import { Caption, Fields, KeyFields, NumberField, Panel } from '../shared.tsx';
 import { secondsLabel } from './time-label.ts';
 const EFFECT_NAMES: Record<Effect['kind'], string> = {
@@ -20,6 +33,7 @@ export function Composition({
   section,
   song,
   sectionStart,
+  sectionMeasure,
   commit,
   change,
   changeSection,
@@ -30,6 +44,7 @@ export function Composition({
   section: Section;
   song: CompiledSong;
   sectionStart: number;
+  sectionMeasure: number;
   commit: (project: Project) => void;
   change: (fn: (project: Project) => void) => void;
   changeSection: (fn: (section: Section, project: Project) => void) => void;
@@ -72,8 +87,25 @@ export function Composition({
       const [moved] = p.sections.splice(i, 1);
       p.sections.splice(j, 0, moved!);
     });
+  const minimum = minimumSectionLength(project, section);
   return (
     <Stack gap={2}>
+      <List
+        component="div"
+        disablePadding
+        aria-label="セクション一覧"
+        sx={{ maxHeight: 220, overflow: 'auto' }}
+      >
+        {project.sections.map((item) => (
+          <ListItemButton
+            key={item.id}
+            selected={section.id === item.id}
+            onClick={() => setSelected(item.id)}
+          >
+            <ListItemText primary={item.name || '名称未設定'} />
+          </ListItemButton>
+        ))}
+      </List>
       <Panel title="曲の設定">
         <Stack gap={2}>
           <TextField
@@ -117,6 +149,40 @@ export function Composition({
             }
             fullWidth
           />
+          <Fields>
+            <FormControlLabel
+              label="音符に合わせて自動で伸ばす"
+              control={
+                <Switch
+                  checked={section.autoExtend === true}
+                  onChange={(_, enabled) =>
+                    changeSection((current) => {
+                      if (enabled) current.autoExtend = true;
+                      else delete current.autoExtend;
+                    })
+                  }
+                />
+              }
+            />
+            {!section.autoExtend && (
+              <NumberField
+                label="長さ（小節）"
+                value={section.length / sectionMeasure}
+                min={
+                  Math.min(section.length, Math.ceil(minimum / sectionMeasure) * sectionMeasure) /
+                  sectionMeasure
+                }
+                max={sectionLimit / sectionMeasure}
+                onChange={(value) => {
+                  const length = Math.round(value * sectionMeasure);
+                  if (length >= minimum && length <= sectionLimit)
+                    changeSection((current) => {
+                      current.length = length;
+                    });
+                }}
+              />
+            )}
+          </Fields>
           <Fields>
             <Chip label={keyName(keyAt(project, { sectionId: section.id, tick: 0 }))} />
             <Chip

@@ -1,5 +1,6 @@
 import {
   Button,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -12,7 +13,6 @@ import {
 } from '@mui/material';
 import { lazy, Suspense, useState } from 'react';
 import type { CompiledSong, Project, Section, Track } from '../../core/types.ts';
-import { PPQ } from '../../core/types.ts';
 import type { Appearance } from '../../core/preferences.ts';
 import { MuiAppearance } from './MuiAppearance.tsx';
 import { generateMelody } from '../../core/presets.ts';
@@ -22,6 +22,7 @@ import type { WorkingBranch } from '../../core/history/revisions.ts';
 import { MotifWindow } from './MotifWindow.tsx';
 import { MelodyWindow } from './MelodyWindow.tsx';
 import { NumberField } from '../shared.tsx';
+import { sectionLimit } from '../../core/section-length.ts';
 
 const ProgressionLibrary = lazy(() =>
   import('../progressions/ProgressionLibrary.tsx').then((module) => ({
@@ -46,7 +47,7 @@ const TimelineDialog = lazy(() =>
 );
 
 const titles = {
-  composition: '曲の構成',
+  composition: 'セクション管理',
   harmony: 'コード進行',
   progressions: 'コード進行ライブラリ',
   tracks: 'トラック設定',
@@ -80,6 +81,7 @@ export function Windows({
   section,
   song,
   sectionStart,
+  sectionMeasure,
   change,
   changeSection,
   commit,
@@ -103,14 +105,16 @@ export function Windows({
   section: Section;
   song: CompiledSong;
   sectionStart: number;
+  sectionMeasure: number;
   change: (update: (p: Project) => void) => void;
   changeSection: (update: (s: Section, p: Project) => void) => void;
   commit: (project: Project) => void;
   setSelected: (id: string) => void;
-  add: (name: string, ticks: number) => void;
+  add: (name: string, ticks: number, autoExtend: boolean) => void;
 }) {
   const [name, setName] = useState('');
-  const [beats, setBeats] = useState(16);
+  const [bars, setBars] = useState(4);
+  const [autoLength, setAutoLength] = useState(true);
   return (
     <MuiAppearance mode={mode}>
       <Suspense fallback={null}>
@@ -183,6 +187,7 @@ export function Windows({
                     section,
                     song,
                     sectionStart,
+                    sectionMeasure,
                     commit,
                     change,
                     changeSection,
@@ -263,21 +268,38 @@ export function Windows({
                   id="new-part"
                   onSubmit={(event) => {
                     event.preventDefault();
-                    add(name.trim() || 'パート', Math.round(beats * PPQ));
+                    const length = Math.round(bars * sectionMeasure);
+                    if (name.trim() && length > 0 && length <= sectionLimit)
+                      add(name.trim(), length, autoLength);
                   }}
                 >
                   <TextField
                     autoFocus
                     label="パート名"
+                    required
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                   />
+                  <Stack gap={0.5} direction="row" flexWrap="wrap">
+                    {['イントロ', 'Aメロ', 'Bメロ', 'サビ', '間奏', 'アウトロ'].map((preset) => (
+                      <Chip key={preset} label={preset} onClick={() => setName(preset)} />
+                    ))}
+                  </Stack>
+                  <FormControlLabel
+                    label="音符に合わせて自動で伸ばす"
+                    control={
+                      <Switch
+                        checked={autoLength}
+                        onChange={(_, checked) => setAutoLength(checked)}
+                      />
+                    }
+                  />
                   <NumberField
-                    label="四分音符数"
-                    value={beats}
+                    label={autoLength ? '初期長（小節）' : '長さ（小節）'}
+                    value={bars}
                     min={1}
-                    max={1024}
-                    onChange={setBeats}
+                    max={Math.floor(sectionLimit / sectionMeasure)}
+                    onChange={setBars}
                   />
                 </Stack>
               )}
@@ -285,7 +307,7 @@ export function Windows({
             <DialogActions>
               <Button onClick={close}>閉じる</Button>
               {view === 'section' && (
-                <Button variant="contained" type="submit" form="new-part">
+                <Button variant="contained" type="submit" form="new-part" disabled={!name.trim()}>
                   追加
                 </Button>
               )}

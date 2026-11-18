@@ -8,6 +8,7 @@ import { PPQ } from '../../core/types.ts';
 import type { CompiledSong, Note, Project, Section, Track } from '../../core/types.ts';
 import { chordName, inScale, pitchName, resolvePitch } from '../../core/theory.ts';
 import { valueAt } from '../../core/time.ts';
+import { sectionLimit } from '../../core/section-length.ts';
 import {
   drawnNoteSpan,
   makeNote,
@@ -31,6 +32,7 @@ interface Props {
   track: Track;
   mode: 'light' | 'dark';
   start: number;
+  sectionMeasure: number;
   song: CompiledSong;
   scaleGuide: boolean;
   audition: ((pitch: number) => void) | undefined;
@@ -65,6 +67,7 @@ export function PianoRoll({
   track,
   mode,
   start,
+  sectionMeasure,
   song,
   scaleGuide,
   audition,
@@ -105,11 +108,15 @@ export function PianoRoll({
   const notes = section.notes[track.id] ?? [];
   const auto = track.kind !== 'melody' && !Object.hasOwn(section.notes, track.id);
   const selectedNote = notes.find((n) => n.id === selected.at(-1));
-  const keyFor = (at: number) => valueAt(song.keys, start + at).key;
+  const keyFor = (at: number) => valueAt(song.keys, start + Math.min(section.length - 1, at)).key;
   const pitchOf = (note: Note) => resolvePitch(note.pitch, keyFor(note.at));
   const editable = song.keys.length > 0 && !auto;
   const px = zoom / PPQ;
-  const width = Math.max(1, section.length * px);
+  const editLimit =
+    section.autoExtend && editable
+      ? Math.min(sectionLimit, section.length + sectionMeasure)
+      : section.length;
+  const width = Math.max(1, editLimit * px);
   const position = playhead - start;
   const guideKey =
     scaleGuide && track.kind !== 'drums' && song.keys.length > 0
@@ -203,7 +210,7 @@ export function PianoRoll({
   };
   const selectedNotes = () => notes.filter((note) => selected.includes(note.id));
   const stamp = (group: Note[], at: number) => {
-    const placed = placePhrase(group, at, section.length);
+    const placed = placePhrase(group, at, editLimit);
     if (!placed.length) {
       if (group.length) notify('貼り付け先のパートに音符が収まりません。');
       return;
@@ -227,7 +234,7 @@ export function PianoRoll({
     const group = notes.filter((n) => selected.includes(n.id));
     const midi = (n: Note) => resolvePitch(n.pitch, keyFor(n.at));
     const boundedTicks = Math.min(
-      ...group.map((n) => section.length - n.at - n.duration),
+      ...group.map((n) => editLimit - n.at - n.duration),
       Math.max(ticks, ...group.map((n) => -n.at)),
     );
     const boundedPitches = Math.min(
@@ -237,12 +244,7 @@ export function PianoRoll({
     if (preview && selectedNote && (boundedPitches || boundedTicks))
       audition?.(midi(selectedNote) + boundedPitches);
     patchNotes((n) =>
-      moveNote(
-        n,
-        { at: n.at + boundedTicks, midi: midi(n) + boundedPitches },
-        section.length,
-        keyFor,
-      ),
+      moveNote(n, { at: n.at + boundedTicks, midi: midi(n) + boundedPitches }, editLimit, keyFor),
     );
   };
   const keyboardEdit = (e: KeyboardEvent<HTMLDivElement>) => {
@@ -330,9 +332,9 @@ export function PianoRoll({
     const rect = e.currentTarget.getBoundingClientRect();
     const at = Math.floor((e.clientX - rect.left) / (px * step)) * step;
     const midi = 127 - Math.floor((e.clientY - rect.top) / row);
-    if (at < 0 || at >= section.length || midi < 0 || midi > 127) return;
+    if (at < 0 || at >= editLimit || midi < 0 || midi > 127) return;
     drawing.current = { pointer: e.pointerId, anchor: at, midi };
-    setDraftNote({ at, duration: Math.min(step, section.length - at), midi });
+    setDraftNote({ at, duration: Math.min(step, editLimit - at), midi });
     e.currentTarget.setPointerCapture(e.pointerId);
     audition?.(midi);
   };
@@ -341,7 +343,7 @@ export function PianoRoll({
     if (!drawingNote || drawingNote.pointer !== event.pointerId) return null;
     const tick = (event.clientX - event.currentTarget.getBoundingClientRect().left) / px;
     return {
-      ...drawnNoteSpan(drawingNote.anchor, tick, step, section.length),
+      ...drawnNoteSpan(drawingNote.anchor, tick, step, editLimit),
       midi: drawingNote.midi,
     };
   };
@@ -487,7 +489,7 @@ export function PianoRoll({
                     {chordName(chord, keyFor(chord.at))}
                   </strong>
                 ))}
-              {Array.from({ length: Math.ceil(section.length / PPQ) }, (_, i) => (
+              {Array.from({ length: Math.ceil(editLimit / PPQ) }, (_, i) => (
                 <span key={i} style={{ left: i * zoom }}>
                   {Math.floor(start / PPQ) + i + 1}
                 </span>
@@ -618,13 +620,13 @@ export function PianoRoll({
                             ? {
                                 ticks: Math.max(
                                   1 - g.duration,
-                                  Math.min(section.length - g.at - g.duration, ticks),
+                                  Math.min(editLimit - g.at - g.duration, ticks),
                                 ),
                                 pitches: 0,
                               }
                             : {
                                 ticks: Math.min(
-                                  ...group.map((n) => section.length - n.at - n.duration),
+                                  ...group.map((n) => editLimit - n.at - n.duration),
                                   Math.max(ticks, ...group.map((n) => -n.at)),
                                 ),
                                 pitches: Math.min(
@@ -710,7 +712,7 @@ export function PianoRoll({
           <NoteDialog
             mode={mode}
             note={selectedNote}
-            length={section.length}
+            length={editLimit}
             keyFor={keyFor}
             update={(patch) => patchNotes((n) => (n.id === selectedNote.id ? patch : {}))}
             remove={remove}

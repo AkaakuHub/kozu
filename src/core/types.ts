@@ -106,6 +106,7 @@ export interface Section {
   role: string;
   variant: 'normal' | 'drop' | 'final';
   length: number;
+  autoExtend?: boolean;
   chords: Chord[];
   notes: Record<string, Note[]>;
   sourceSectionId: string | null;

@@ -370,7 +370,7 @@ export function makeChords(preset: ProgressionPreset, length: number): Chord[] {
   }));
 }
 export function createSection(
-  name = 'Aメロ',
+  name = 'セクション1',
   length = PPQ * 16,
   progression: ProgressionPreset | null = PROGRESSIONS[0]!,
 ): Section {
@@ -488,7 +488,8 @@ export function generateMelody(
   return notes.sort((a, b) => a.at - b.at);
 }
 export function createBlankProject(): Project {
-  const section = createSection('Aメロ', PPQ * 16, null);
+  const section = createSection('セクション1', PPQ * 16, null);
+  section.autoExtend = true;
   return {
     schemaVersion: 2,
     title: '無題',
