@@ -1,0 +1,598 @@
+import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { KeyboardEvent, MouseEvent, PointerEvent, RefObject } from 'react';
+import { useRollGestures } from './useRollGestures.ts';
+import { RollTools } from './RollTools.tsx';
+import type { RollTool } from './RollTools.tsx';
+import { PPQ } from '../../core/types.ts';
+import type { CompiledSong, Note, Project, Section, Track } from '../../core/types.ts';
+import { chordName, inScale, pitchName, resolvePitch } from '../../core/theory.ts';
+import { valueAt } from '../../core/time.ts';
+import { makeNote, materializeNotes, moveNote, placePhrase } from '../../core/roll-editing.ts';
+const NoteDialog = lazy(() =>
+  import('./NoteDialog.tsx').then((module) => ({ default: module.NoteDialog })),
+);
+import './roll.css';
+
+const row = 22;
+const ruler = 54;
+const keyboard = 52;
+const shades = ['#71e3c3', '#b1a8ff', '#ffc17d', '#8ebeff', '#ff9dbb'];
+
+interface Props {
+  project: Project;
+  section: Section;
+  track: Track;
+  mode: 'light' | 'dark';
+  start: number;
+  song: CompiledSong;
+  playhead: number;
+  cursorTick: RefObject<number>;
+  cursorFrame: RefObject<((tick: number) => void) | null>;
+  clipboard: Note[];
+  copyNotes: (notes: Note[]) => void;
+  notify: (message: string) => void;
+  playing: boolean;
+  seek: (tick: number) => void;
+  editTempo: (tick: number) => void;
+  generateMelody: () => void;
+  change: (update: (s: Section, p: Project) => void) => void;
+}
+
+interface Drag {
+  id: string;
+  x: number;
+  y: number;
+  mode: 'move' | 'resize';
+  at: number;
+  pitch: number;
+  duration: number;
+}
+const snap = (value: number, step: number) => Math.round(value / step) * step;
+
+export function PianoRoll({
+  project,
+  section,
+  track,
+  mode,
+  start,
+  song,
+  playhead,
+  cursorFrame,
+  cursorTick,
+  clipboard,
+  copyNotes,
+  notify,
+  playing,
+  seek,
+  editTempo,
+  generateMelody: openMelody,
+  change,
+}: Props) {
+  const [selected, select] = useState<string[]>([]);
+  const [detail, setDetail] = useState(false);
+  const [tool, setTool] = useState<RollTool>('select');
+  const [step, setStep] = useState(PPQ / 4);
+  const [zoom, setZoom] = useState(72);
+  const [ghosts, setGhosts] = useState(true);
+  const [delta, setDelta] = useState({ ticks: 0, pitches: 0 });
+  const viewport = useRef<HTMLDivElement>(null);
+  const cursor = useRef<HTMLDivElement>(null);
+  const follow = useRef(true);
+  const [range, setRange] = useState({ first: 0, last: PPQ * 24 });
+  const drag = useRef<Drag | null>(null);
+  useRollGestures(viewport, keyboard, zoom, setZoom, () => {
+    drag.current = null;
+    setDelta({ ticks: 0, pitches: 0 });
+  });
+  const notes = section.notes[track.id] ?? [];
+  const auto = track.kind !== 'melody' && !Object.hasOwn(section.notes, track.id);
+  const selectedNote = notes.find((n) => n.id === selected.at(-1));
+  const keyFor = (at: number) => valueAt(song.keys, start + at).key;
+  const pitchOf = (note: Note) => resolvePitch(note.pitch, keyFor(note.at));
+  const editable = song.keys.length > 0 && !auto;
+  const px = zoom / PPQ;
+  const width = Math.max(1, section.length * px);
+  const position = playhead - start;
+  const color = shades[project.tracks.indexOf(track) % shades.length];
+  const local = useMemo(
+    () => song.notes.filter((n) => n.start >= start && n.start < start + section.length),
+    [song.notes, start, section.length],
+  );
+  const chords = section.chords;
+  const center = local.find((n) => n.trackId === track.id)?.pitch ?? (track.octave + 1) * 12;
+
+  useLayoutEffect(() => {
+    const view = viewport.current;
+    if (view) view.scrollTop = Math.max(0, (127 - center) * row - view.clientHeight / 2);
+    select([]);
+    setDetail(false);
+  }, [section.id, track.id]);
+
+  useLayoutEffect(() => {
+    const view = viewport.current;
+    if (!view) return;
+    const update = () => {
+      const span = PPQ * 4;
+      const first = Math.max(0, Math.floor(view.scrollLeft / px / span) * span - span);
+      const last = Math.ceil((view.scrollLeft + view.clientWidth) / px / span) * span + span;
+      setRange((old) => (old.first === first && old.last === last ? old : { first, last }));
+    };
+    const manual = () => {
+      follow.current = false;
+    };
+    view.addEventListener('wheel', manual, { passive: true });
+    view.addEventListener('touchstart', manual, { passive: true });
+    view.addEventListener('scroll', update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(view);
+    update();
+    return () => {
+      view.removeEventListener('scroll', update);
+      view.removeEventListener('wheel', manual);
+      view.removeEventListener('touchstart', manual);
+      observer.disconnect();
+    };
+  }, [px]);
+
+  useLayoutEffect(() => {
+    if (playing) follow.current = true;
+  }, [playing]);
+
+  useLayoutEffect(() => {
+    const frame = (tick: number) => {
+      const view = viewport.current;
+      const marker = cursor.current;
+      if (!view || !marker) return;
+      const at = tick - start;
+      const x = at * px;
+      marker.style.visibility = at < 0 || at > section.length ? 'hidden' : 'visible';
+      marker.style.transform = `translateX(${x}px)`;
+      if (
+        playing &&
+        follow.current &&
+        at >= 0 &&
+        at < section.length &&
+        (x > view.scrollLeft + view.clientWidth - keyboard - 24 || x < view.scrollLeft)
+      )
+        view.scrollLeft = Math.max(0, x - 48);
+    };
+    cursorFrame.current = frame;
+    frame(cursorTick.current);
+    return () => {
+      if (cursorFrame.current === frame) cursorFrame.current = null;
+    };
+  }, [cursorFrame, cursorTick, px, section.length, start, playing, playhead]);
+
+  const patchNotes = (transform: (note: Note) => Partial<Note>) => {
+    change((s) => {
+      s.notes[track.id] = notes.map((note) =>
+        selected.includes(note.id)
+          ? { ...note, ...transform(note), origin: 'manual', locked: true }
+          : note,
+      );
+    });
+  };
+  const remove = () => {
+    change((s) => {
+      s.notes[track.id] = notes.filter((n) => !selected.includes(n.id));
+    });
+    select([]);
+    setDetail(false);
+  };
+  const selectedNotes = () => notes.filter((note) => selected.includes(note.id));
+  const stamp = (group: Note[], at: number) => {
+    const placed = placePhrase(group, at, section.length);
+    if (!placed.length) {
+      if (group.length) notify('貼り付け先のパートに音符が収まりません。');
+      return;
+    }
+    change((section) => {
+      section.notes[track.id] = [...notes, ...placed];
+    });
+    select(placed.map((note) => note.id));
+  };
+  const duplicate = () => {
+    const group = selectedNotes();
+    if (group.length)
+      stamp(
+        group,
+        group.reduce((end, note) => Math.max(end, note.at + note.duration), 0),
+      );
+  };
+  const paste = () => stamp(clipboard, Math.max(0, snap(position, step)));
+  const moveSelected = (ticks: number, pitches: number) => {
+    if (!ticks && !pitches) return;
+    const group = notes.filter((n) => selected.includes(n.id));
+    const midi = (n: Note) => resolvePitch(n.pitch, keyFor(n.at));
+    const boundedTicks = Math.min(
+      ...group.map((n) => section.length - n.at - n.duration),
+      Math.max(ticks, ...group.map((n) => -n.at)),
+    );
+    const boundedPitches = Math.min(
+      ...group.map((n) => 127 - midi(n)),
+      Math.max(pitches, ...group.map((n) => -midi(n))),
+    );
+    patchNotes((n) =>
+      moveNote(
+        n,
+        { at: n.at + boundedTicks, midi: midi(n) + boundedPitches },
+        section.length,
+        keyFor,
+      ),
+    );
+  };
+  const keyboardEdit = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget || !editable) return;
+    const key = e.key.toLowerCase();
+    if (e.ctrlKey || e.metaKey) {
+      if (key === 'a') select(notes.map((note) => note.id));
+      else if (key === 'c' && selectedNote) copyNotes(selectedNotes());
+      else if (key === 'x' && selectedNote) {
+        copyNotes(selectedNotes());
+        remove();
+      } else if (key === 'v' && clipboard.length) paste();
+      else if (key === 'd' && selectedNote) duplicate();
+      else return;
+      e.preventDefault();
+      return;
+    }
+    if (key === 'escape') {
+      select([]);
+      return;
+    }
+    if (key === 'p' || key === 'v') {
+      setTool(key === 'p' ? 'draw' : 'select');
+      return;
+    }
+    if (!selectedNote) {
+      if (e.key === 'Enter' && notes[0]) {
+        select([notes[0].id]);
+        e.preventDefault();
+      }
+      return;
+    }
+    if (e.key === 'Enter') {
+      setDetail(true);
+      e.preventDefault();
+      return;
+    }
+    if (e.key === 'Delete' || e.key === 'Backspace') remove();
+    else if (e.key === 'ArrowLeft') moveSelected(-step, 0);
+    else if (e.key === 'ArrowRight') moveSelected(step, 0);
+    else if (e.key === 'ArrowUp') moveSelected(0, 1);
+    else if (e.key === 'ArrowDown') moveSelected(0, -1);
+    else return;
+    e.preventDefault();
+  };
+  const begin = (e: PointerEvent<HTMLDivElement>, n: Note, pitch: number) => {
+    if (e.button !== 0 || !e.isPrimary) return;
+    e.stopPropagation();
+    if (e.pointerType === 'touch' && !selected.includes(n.id)) return;
+    if (e.shiftKey) {
+      select(selected.includes(n.id) ? selected.filter((id) => id !== n.id) : [...selected, n.id]);
+      return;
+    }
+    if (!selected.includes(n.id)) select([n.id]);
+    viewport.current?.focus({ preventScroll: true });
+    const end = e.currentTarget.getBoundingClientRect().right;
+    drag.current = {
+      id: n.id,
+      x: e.clientX,
+      y: e.clientY,
+      at: n.at,
+      pitch,
+      duration: n.duration,
+      mode:
+        tool === 'resize' || (e.pointerType === 'mouse' && end - e.clientX < 8) ? 'resize' : 'move',
+    };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const add = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget || e.button !== 0) return;
+    viewport.current?.focus({ preventScroll: true });
+    if (tool !== 'draw') {
+      select([]);
+      return;
+    }
+    if (!editable) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const at = Math.floor((e.clientX - rect.left) / (px * step)) * step;
+    const midi = 127 - Math.floor((e.clientY - rect.top) / row);
+    if (at < 0 || at >= section.length || midi < 0 || midi > 127) return;
+    const note = makeNote(
+      at,
+      Math.min(step, section.length - at),
+      midi,
+      keyFor(at),
+      track.kind === 'drums',
+    );
+    change((s) => {
+      s.notes[track.id] = [...notes, note];
+    });
+    select([note.id]);
+  };
+
+  return (
+    <section className="roll" aria-label="ピアノロール">
+      <RollTools
+        track={track}
+        tool={tool}
+        setTool={setTool}
+        auto={auto}
+        valid={song.keys.length > 0}
+        selected={Boolean(selectedNote)}
+        hasNotes={notes.length > 0}
+        openDetails={() => setDetail(true)}
+        duplicate={duplicate}
+        copy={() => copyNotes(selectedNotes())}
+        paste={paste}
+        canPaste={clipboard.length > 0 && editable}
+        remove={remove}
+        selectAll={() => select(notes.map((note) => note.id))}
+        quantize={() =>
+          patchNotes((note) =>
+            moveNote(
+              note,
+              { at: snap(note.at, step), midi: pitchOf(note) },
+              section.length,
+              keyFor,
+            ),
+          )
+        }
+        step={step}
+        setStep={setStep}
+        zoom={zoom}
+        setZoom={setZoom}
+        ghosts={ghosts}
+        toggleGhosts={() => setGhosts(!ghosts)}
+        generate={() => {
+          if (!auto && track.kind === 'melody') {
+            openMelody();
+            return;
+          }
+          if (auto) setTool('select');
+          change((section) => {
+            if (auto)
+              section.notes[track.id] = materializeNotes(
+                local,
+                track.id,
+                start,
+                section.length,
+                keyFor,
+                track.kind === 'drums',
+              );
+            else delete section.notes[track.id];
+          });
+        }}
+      />
+      <div
+        className="roll-view"
+        ref={viewport}
+        tabIndex={0}
+        onKeyDown={keyboardEdit}
+        aria-label="音符グリッド"
+      >
+        <div
+          className="roll-content"
+          style={{ width: width + keyboard, height: 128 * row + ruler }}
+        >
+          <div className="roll-ruler" style={{ width: width + keyboard }}>
+            <span className="roll-corner">MIDI</span>
+            <div
+              className="roll-time"
+              style={{ width }}
+              onClick={(e) => {
+                const tick = snap(
+                  (e.clientX - e.currentTarget.getBoundingClientRect().left) / px,
+                  step,
+                );
+                seek(start + Math.min(section.length - 1, Math.max(0, tick)));
+              }}
+            >
+              {start === 0 &&
+                !project.tempoChanges.some(
+                  (event) => event.at.sectionId === section.id && event.at.tick === 0,
+                ) && (
+                  <button
+                    className="roll-tempo"
+                    type="button"
+                    style={{ left: 0 }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      editTempo(0);
+                    }}
+                  >
+                    {project.initialTempo} BPM
+                  </button>
+                )}
+              {project.tempoChanges
+                .filter((event) => event.at.sectionId === section.id)
+                .map((event) => (
+                  <button
+                    className="roll-tempo"
+                    type="button"
+                    key={event.id}
+                    style={{ left: event.at.tick * px }}
+                    onClick={(click) => {
+                      click.stopPropagation();
+                      editTempo(event.at.tick);
+                    }}
+                  >
+                    {Number(event.bpm.toFixed(1))}
+                    {event.ramp ? ` → ${Number(event.ramp.toBpm.toFixed(1))}` : ''} BPM
+                  </button>
+                ))}
+              {song.keys.length > 0 &&
+                chords.map((chord) => (
+                  <strong
+                    key={chord.id}
+                    style={{ left: chord.at * px, width: chord.duration * px }}
+                  >
+                    {chordName(chord, keyFor(chord.at))}
+                  </strong>
+                ))}
+              {Array.from({ length: Math.ceil(section.length / PPQ) }, (_, i) => (
+                <span key={i} style={{ left: i * zoom }}>
+                  {Math.floor(start / PPQ) + i + 1}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div
+            className="roll-grid"
+            style={{
+              width,
+              height: 128 * row,
+              backgroundSize: `${step * px}px ${row}px, ${zoom}px ${row}px`,
+            }}
+            onClick={add}
+          >
+            {chords.map((chord) => (
+              <i key={chord.id} className="roll-chord" style={{ left: chord.at * px }} />
+            ))}
+            {local
+              .filter(
+                (n) =>
+                  n.end - start > range.first &&
+                  n.start - start < range.last &&
+                  (n.trackId === track.id ? auto : ghosts),
+              )
+              .map((n) => (
+                <div
+                  key={n.id}
+                  className="roll-ghost"
+                  style={{
+                    left: (n.start - start) * px,
+                    top: (127 - n.pitch) * row + 2,
+                    width: Math.max(2, (n.end - n.start) * px),
+                    background:
+                      shades[project.tracks.findIndex((t) => t.id === n.trackId) % shades.length],
+                    opacity: n.trackId === track.id ? 0.66 : 0.21,
+                  }}
+                />
+              ))}
+            {song.keys.length > 0 &&
+              notes
+                .filter(
+                  (note) =>
+                    selected.includes(note.id) ||
+                    (note.at + note.duration > range.first && note.at < range.last),
+                )
+                .map((note) => {
+                  const pitch = resolvePitch(note.pitch, keyFor(note.at));
+                  const active = selected.includes(note.id);
+                  const preview = active ? drag.current : null;
+                  const at = note.at + (preview?.mode === 'move' ? delta.ticks : 0);
+                  const length =
+                    note.duration +
+                    (preview?.mode === 'resize' && preview.id === note.id ? delta.ticks : 0);
+                  const midi = pitch + (preview?.mode === 'move' ? delta.pitches : 0);
+                  return (
+                    <div
+                      key={note.id}
+                      className="roll-note"
+                      data-selected={active}
+                      title={pitchName(pitch, false, true)}
+                      style={{
+                        left: at * px,
+                        top: (127 - midi) * row + 2,
+                        width: Math.max(4, length * px),
+                        background: color,
+                      }}
+                      onPointerDown={(e) => begin(e, note, pitch)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (!selected.includes(note.id) && !event.shiftKey) select([note.id]);
+                      }}
+                      onDoubleClick={() => {
+                        select([note.id]);
+                        setDetail(true);
+                      }}
+                      onPointerMove={(e) => {
+                        const g = drag.current;
+                        if (!g || g.id !== note.id) return;
+                        const ticks = snap((e.clientX - g.x) / px, step);
+                        const pitches = Math.round((g.y - e.clientY) / row);
+                        const group = notes.filter((n) => selected.includes(n.id));
+                        const pitchOf = (n: Note) => resolvePitch(n.pitch, keyFor(n.at));
+                        setDelta(
+                          g.mode === 'resize'
+                            ? {
+                                ticks: Math.max(
+                                  1 - g.duration,
+                                  Math.min(section.length - g.at - g.duration, ticks),
+                                ),
+                                pitches: 0,
+                              }
+                            : {
+                                ticks: Math.min(
+                                  ...group.map((n) => section.length - n.at - n.duration),
+                                  Math.max(ticks, ...group.map((n) => -n.at)),
+                                ),
+                                pitches: Math.min(
+                                  ...group.map((n) => 127 - pitchOf(n)),
+                                  Math.max(pitches, ...group.map((n) => -pitchOf(n))),
+                                ),
+                              },
+                        );
+                      }}
+                      onPointerUp={() => {
+                        const g = drag.current;
+                        drag.current = null;
+                        if (g?.id === note.id) {
+                          if (g.mode === 'resize' && delta.ticks)
+                            patchNotes((n) =>
+                              n.id === g.id ? { duration: n.duration + delta.ticks } : {},
+                            );
+                          if (g.mode === 'move') moveSelected(delta.ticks, delta.pitches);
+                        }
+                        setDelta({ ticks: 0, pitches: 0 });
+                      }}
+                      onLostPointerCapture={() => {
+                        drag.current = null;
+                        setDelta({ ticks: 0, pitches: 0 });
+                      }}
+                    >
+                      <span>{pitchName(pitch, false, true)}</span>
+                    </div>
+                  );
+                })}
+            <div ref={cursor} className="roll-playhead" />
+          </div>
+          <div className="roll-keys" aria-hidden="true">
+            {Array.from({ length: 128 }, (_, i) => {
+              const midi = 127 - i;
+              const name = pitchName(midi, false, true);
+              return (
+                <div
+                  key={midi}
+                  data-black={name.includes('♯')}
+                  data-scale={
+                    editable &&
+                    track.kind !== 'drums' &&
+                    inScale(midi, keyFor(Math.max(0, position)))
+                  }
+                >
+                  {name}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+      {detail && selectedNote && editable && (
+        <Suspense fallback={null}>
+          <NoteDialog
+            mode={mode}
+            note={selectedNote}
+            length={section.length}
+            keyFor={keyFor}
+            update={(patch) => patchNotes((n) => (n.id === selectedNote.id ? patch : {}))}
+            remove={remove}
+            close={() => setDetail(false)}
+          />
+        </Suspense>
+      )}
+    </section>
+  );
+}

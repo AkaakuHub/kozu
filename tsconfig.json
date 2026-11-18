@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node", "vite-plus/client"]
+  },
+  "include": [
+    ".cloudflare/types/index.d.ts",
+    "cloudflare.config.ts",
+    "src",
+    "tests",
+    "vite.config.ts",
+    "scripts/**/*.ts"
+  ],
+  "exclude": ["node_modules", "dist", "preview"]
+}

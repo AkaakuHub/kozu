@@ -1,0 +1,234 @@
+.roll {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--surface);
+  color: var(--ink);
+}
+.roll-tools {
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  gap: 7px;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--line);
+  scrollbar-width: thin;
+}
+.roll-field select,
+.roll-command {
+  border: 1px solid var(--line);
+  background: var(--raised);
+  color: inherit;
+  border-radius: 5px;
+  font:
+    12px system-ui,
+    sans-serif;
+  min-height: 32px;
+  max-width: 150px;
+}
+.roll-field {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 4px;
+  color: var(--muted);
+}
+.roll-field select {
+  color: var(--ink);
+}
+.roll-field input {
+  width: 73px;
+  accent-color: #71e3c3;
+}
+.roll-command {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  padding: 0 8px;
+  cursor: pointer;
+}
+.roll-view {
+  min-width: 0;
+  touch-action: none;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: #65758c #161e2b;
+  background: var(--roll);
+}
+.roll-view:focus-visible {
+  outline: 2px solid #71e3c3;
+  outline-offset: -2px;
+}
+.roll-content {
+  position: relative;
+}
+.roll-ruler {
+  position: sticky;
+  z-index: 4;
+  top: 0;
+  height: 54px;
+  display: flex;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  font:
+    12px ui-monospace,
+    monospace;
+}
+.roll-corner {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: 52px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: var(--raised);
+}
+.roll-time {
+  position: relative;
+  cursor: crosshair;
+}
+.roll-time strong {
+  position: absolute;
+  top: 17px;
+  padding-left: 5px;
+  color: var(--accent);
+  overflow: hidden;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.roll-time span {
+  position: absolute;
+  top: 2px;
+  padding-left: 5px;
+  pointer-events: none;
+}
+.roll-grid {
+  position: absolute;
+  top: 54px;
+  left: 52px;
+  overflow: hidden;
+  background-image:
+    linear-gradient(to right, var(--line) 1px, transparent 1px),
+    linear-gradient(to right, var(--grid) 1px, transparent 1px);
+  background-repeat: repeat;
+}
+.roll-grid::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(to bottom, transparent 0 21px, var(--grid) 21px 22px);
+  pointer-events: none;
+}
+.roll-chord,
+.roll-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid #7789aa;
+  pointer-events: none;
+}
+.roll-playhead {
+  left: 0;
+  z-index: 2;
+  border-color: #ffe181;
+  border-width: 2px;
+}
+.roll-ghost,
+.roll-note {
+  position: absolute;
+  height: 18px;
+  border-radius: 3px;
+}
+.roll-ghost {
+  pointer-events: none;
+}
+.roll-note {
+  z-index: 1;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  overflow: hidden;
+  color: #102331;
+  font:
+    11px/18px ui-monospace,
+    monospace;
+}
+.roll-note span {
+  padding: 0 4px;
+  white-space: nowrap;
+}
+.roll-note[data-selected='true'] {
+  outline: 2px solid #fff4bb;
+}
+.roll-keys {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  width: 52px;
+  pointer-events: none;
+}
+.roll-keys div {
+  height: 22px;
+  display: grid;
+  place-items: center;
+  background: #e0e6ef;
+  border-bottom: 1px solid #9cacc1;
+  color: #27354a;
+  font:
+    11px ui-monospace,
+    monospace;
+}
+.roll-keys div[data-black='true'] {
+  background: #1b2739;
+  color: #edf4fc;
+  border-color: #46566e;
+}
+
+@media (max-width: 680px) {
+  .roll-tools {
+    padding: 3px 4px;
+    gap: 5px;
+  }
+  .roll-tools .tool-group {
+    padding-right: 3px;
+  }
+  .roll-tools .tool-button {
+    width: 37px;
+    height: 39px;
+  }
+  .roll-field input {
+    width: 65px;
+  }
+}
+.roll-keys div[data-scale='true'] {
+  box-shadow: inset 3px 0 #68a896;
+}
+@media (max-width: 680px) {
+  .roll-tools {
+    flex-wrap: wrap;
+  }
+  .roll-tools .note-actions {
+    order: 2;
+  }
+}
+
+.roll-tempo {
+  position: absolute;
+  z-index: 1;
+  top: 33px;
+  border: 0;
+  border-left: 2px solid var(--accent);
+  padding: 0 5px;
+  min-height: 19px;
+  white-space: nowrap;
+  font: inherit;
+  color: var(--ink);
+  background: var(--raised);
+  cursor: pointer;
+}

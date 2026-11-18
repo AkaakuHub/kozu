@@ -1,0 +1,158 @@
+import type { Project } from '../../core/types.ts';
+import { projectRows, rowsProject, scoreKeys, scoreTables } from '../../core/history/score-rows.ts';
+import type { ScoreRow, ScoreRows, ScoreTable } from '../../core/history/score-rows.ts';
+import { delta } from '../../core/history/revisions.ts';
+import type { ScoreBranch, ScoreCommit, ScorePull } from '../../core/history/revisions.ts';
+
+const ancestry = `WITH RECURSIVE path(id, level) AS (
+  SELECT id, 0 FROM score_commits WHERE id = ? AND owner = ?
+  UNION ALL
+  SELECT c.parent, path.level + 1 FROM path JOIN score_commits c ON c.id = path.id WHERE c.parent IS NOT NULL
+)`;
+
+export async function readHistory(db: D1Database, owner: string) {
+  const [branches, commits, pulls] = await db.batch([
+    db.prepare('SELECT name, head FROM score_branches WHERE owner = ? ORDER BY name').bind(owner),
+    db
+      .prepare(
+        'SELECT id, parent, merge_parent, message, created_at FROM score_commits WHERE owner = ? ORDER BY created_at DESC, rowid DESC',
+      )
+      .bind(owner),
+    db
+      .prepare(
+        'SELECT id, source, target, title, merged FROM score_pulls WHERE owner = ? ORDER BY id DESC',
+      )
+      .bind(owner),
+  ]);
+  return {
+    branches: (branches?.results.length
+      ? branches.results
+      : [{ name: 'main', head: null }]) as ScoreBranch[],
+    commits: (commits?.results ?? []) as ScoreCommit[],
+    pulls: (pulls?.results ?? []) as ScorePull[],
+  };
+}
+
+export async function loadRows(
+  db: D1Database,
+  owner: string,
+  id: string,
+): Promise<ScoreRows | null> {
+  const result = await db.batch<ScoreRow>(
+    scoreTables.map((table) => {
+      const keys = scoreKeys[table];
+      const query =
+        table === 'score_header'
+          ? `${ancestry} SELECT t.* FROM path JOIN ${table} t ON t.revision = path.id ORDER BY path.level LIMIT 1`
+          : `${ancestry} SELECT * FROM (
+          SELECT t.*, row_number() OVER (PARTITION BY ${keys.map((key) => `t.${key}`).join(', ')} ORDER BY path.level) AS nearest
+          FROM path JOIN ${table} t ON t.revision = path.id
+        ) WHERE nearest = 1 AND removed = 0`;
+      return db.prepare(query).bind(id, owner);
+    }),
+  );
+  if (!result[0]?.results.length) return null;
+  return Object.fromEntries(
+    scoreTables.map((table, index) => [
+      table,
+      result[index]!.results.map(
+        ({ revision: _revision, nearest: _nearest, removed: _removed, ...row }) => row,
+      ),
+    ]),
+  ) as ScoreRows;
+}
+
+export async function loadScore(db: D1Database, owner: string, id: string) {
+  const rows = await loadRows(db, owner, id);
+  return rows ? rowsProject(rows) : null;
+}
+
+function statements(db: D1Database, table: ScoreTable, rows: ScoreRow[], id: string) {
+  if (!rows.length) return [];
+  const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+  const query = `INSERT INTO ${table} (revision, ${columns.join(', ')})
+    SELECT ?, ${columns.map((column) => `json_extract(value, '$.${column}')`).join(', ')}
+    FROM json_each(?) WHERE EXISTS (SELECT 1 FROM score_commits WHERE id = ?)`;
+  // D1 limits each bound string to 2,000,000 bytes. Leave space for the JSON array delimiters.
+  const batches: string[][] = [[]];
+  const encoder = new TextEncoder();
+  let used = 2;
+  for (const row of rows) {
+    const item = JSON.stringify(row);
+    const size = encoder.encode(item).byteLength + 1;
+    if (used + size > 2_000_000) {
+      batches.push([]);
+      used = 2;
+    }
+    batches.at(-1)!.push(item);
+    used += size;
+  }
+  return batches.map((batch) => db.prepare(query).bind(id, `[${batch.join(',')}]`, id));
+}
+
+interface Save {
+  owner: string;
+  branch: string;
+  expected: string | null;
+  message: string;
+  project: Project;
+  merge?: { id: number; branch: string; head: string };
+}
+export async function appendCommit(
+  db: D1Database,
+  save: Save,
+): Promise<{ id: string } | { error: string; status: number }> {
+  const { owner, branch, expected, message, merge } = save;
+  const before = expected ? await loadRows(db, owner, expected) : null;
+  if (expected && !before) return { error: '変更元のコミットが見つかりません。', status: 409 };
+  const next = projectRows(save.project);
+  const id = crypto.randomUUID();
+  const changes = scoreTables.flatMap((table) =>
+    statements(db, table, delta(table, before?.[table] ?? [], next[table]), id),
+  );
+  if (!changes.length && !merge) return { error: '譜面に変更がありません。', status: 409 };
+  const seed = db
+    .prepare(`INSERT INTO score_branches (owner, name)
+    SELECT ?, 'main' WHERE ? = 'main' AND ? IS NULL ON CONFLICT DO NOTHING`)
+    .bind(owner, branch, expected);
+  const guard = merge
+    ? `AND EXISTS (SELECT 1 FROM score_branches b JOIN score_pulls p
+    ON p.owner = b.owner AND p.source = b.name WHERE b.owner = ? AND b.name = ? AND b.head = ?
+    AND p.id = ? AND p.target = ? AND p.merged IS NULL)`
+    : '';
+  const insert =
+    db.prepare(`INSERT INTO score_commits (id, owner, parent, merge_parent, message, created_at)
+    SELECT ?, ?, ?, ?, ?, ? WHERE EXISTS (
+      SELECT 1 FROM score_branches WHERE owner = ? AND name = ? AND head IS ?
+    ) ${guard}`);
+  const params = [
+    id,
+    owner,
+    expected,
+    merge?.head ?? null,
+    message,
+    Date.now(),
+    owner,
+    branch,
+    expected,
+  ];
+  const commit = merge
+    ? insert.bind(...params, owner, merge.branch, merge.head, merge.id, branch)
+    : insert.bind(...params);
+  const update = db
+    .prepare(`UPDATE score_branches SET head = ? WHERE owner = ? AND name = ?
+    AND EXISTS (SELECT 1 FROM score_commits WHERE id = ?)`)
+    .bind(id, owner, branch, id);
+  const finish = merge
+    ? [
+        db
+          .prepare(`UPDATE score_pulls SET merged = ? WHERE owner = ? AND id = ?
+    AND EXISTS (SELECT 1 FROM score_commits WHERE id = ?)`)
+          .bind(id, owner, merge.id, id),
+      ]
+    : [];
+  const [, result] = await db.batch([seed, commit, ...changes, update, ...finish]);
+  return result?.meta.changes
+    ? { id }
+    : { error: 'ブランチが更新されています。最新の履歴を読み込んでください。', status: 409 };
+}
