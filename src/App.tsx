@@ -57,7 +57,7 @@ const Windows = lazy(() =>
 export default function App() {
   const [message, notify] = useState('');
   const session = useProject(notify);
-  const { preferences, update: updatePreferences } = usePreferences(notify);
+  const { preferences, update: updatePreferences, flush: savePreferences } = usePreferences(notify);
   const appearance = preferences.appearance ?? 'system';
   const scaleGuide = preferences.scaleGuide ?? true;
   const notePreview = preferences.notePreview ?? true;
@@ -264,7 +264,7 @@ export default function App() {
         )
       )
         return;
-      await session.flush();
+      await Promise.all([session.flush(), savePreferences()]);
       location.assign('/');
     } catch (error) {
       notify(error instanceof Error ? error.message : String(error));

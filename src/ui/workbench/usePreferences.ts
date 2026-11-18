@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { parsePreferences } from '../../core/preferences.ts';
 import type { Preferences } from '../../core/preferences.ts';
 
@@ -13,8 +13,7 @@ export function usePreferences(notify: (message: string) => void) {
   });
   const pending = useRef<Preferences>({});
   const dirty = useRef<Preferences>({});
-  const saving = useRef(false);
-  const sequence = useRef(0);
+  const saving = useRef<Promise<void> | null>(null);
   const [revision, changed] = useState(0);
   useEffect(() => {
     let live = true;
@@ -37,40 +36,45 @@ export function usePreferences(notify: (message: string) => void) {
     }
   }, [preferences]);
 
+  const flush = useCallback(async () => {
+    while (saving.current || Object.keys(pending.current).length) {
+      if (!saving.current) {
+        const patch = pending.current;
+        pending.current = {};
+        saving.current = fetch('/api/preferences', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(patch),
+          keepalive: true,
+        })
+          .then((response) => {
+            if (!response.ok) throw new Error('設定をクラウドに保存できませんでした。');
+          })
+          .catch(() => {
+            pending.current = { ...patch, ...pending.current };
+            throw new Error('設定をクラウドに保存できませんでした。');
+          })
+          .finally(() => {
+            saving.current = null;
+          });
+      }
+      await saving.current;
+    }
+  }, []);
   useEffect(() => {
     if (!revision) return;
-    const timer = setTimeout(() => {
-      if (saving.current) return;
-      const patch = pending.current;
-      if (!Object.keys(patch).length) return;
-      pending.current = {};
-      const id = sequence.current;
-      saving.current = true;
-      void fetch('/api/preferences', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patch),
-      })
-        .then((response) => {
-          if (!response.ok) throw new Error('設定をクラウドに保存できませんでした。');
-        })
-        .catch(() => {
-          pending.current = { ...patch, ...pending.current };
-          notify('設定をクラウドに保存できませんでした。');
-        })
-        .finally(() => {
-          saving.current = false;
-          if (id !== sequence.current) changed((value) => value + 1);
-        });
-    }, 450);
+    const timer = setTimeout(
+      () => void flush().catch((error: Error) => notify(error.message)),
+      450,
+    );
     return () => clearTimeout(timer);
-  }, [notify, revision]);
+  }, [flush, notify, revision]);
   return {
     preferences,
+    flush,
     update: (patch: Preferences) => {
       pending.current = { ...pending.current, ...patch };
       dirty.current = { ...dirty.current, ...patch };
-      sequence.current++;
       set((old) => ({ ...old, ...patch }));
       changed((value) => value + 1);
     },
