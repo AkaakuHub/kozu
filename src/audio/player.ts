@@ -7,17 +7,13 @@ import { Mixer } from './mixer.ts';
 import { mixLevel } from '../core/track-mix.ts';
 
 type Voice = ReturnType<typeof previewVoice>;
-type SamplePitch = string | number;
 
 export class Player {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
   private frame: number | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
-  private instruments = new Map<
-    string,
-    { voice: Voice; audio: Smplr; pitches: Set<SamplePitch> }
-  >();
+  private instruments = new Map<string, { voice: Voice; audio: Smplr }>();
   private mixer: Mixer | null = null;
   private generation = 0;
   private preview: Audition | null = null;
@@ -87,17 +83,11 @@ export class Player {
     const tracks = new Map(project.tracks.map((track) => [track.id, track]));
     const floor = loopStart ?? start;
     const source = song.notes.filter((note) => note.end > floor && note.start < end);
-    const groups = new Map<Voice, Map<string, Set<SamplePitch>>>();
+    const required = new Map<string, Voice>();
     for (const note of source) {
       const track = tracks.get(note.trackId)!;
-      const voice = previewVoice(track);
-      const group = groups.get(voice) ?? new Map<string, Set<SamplePitch>>();
-      const pitches = group.get(track.id) ?? new Set<SamplePitch>();
-      for (const pitch of previewNotes(track, note.pitch)) pitches.add(pitch);
-      if (pitches.size) {
-        group.set(track.id, pitches);
-        groups.set(voice, group);
-      }
+      if (!required.has(track.id) && previewNotes(track, note.pitch).length)
+        required.set(track.id, previewVoice(track));
     }
     for (const [id, loaded] of this.instruments) {
       const track = tracks.get(id);
@@ -106,29 +96,18 @@ export class Player {
       this.instruments.delete(id);
     }
     await Promise.all(
-      [...groups].map(async ([voice, group]) => {
-        let warm = [...new Set([...group.values()].flatMap((pitches) => [...pitches]))];
-        for (const [id, needed] of group) {
-          if (generation !== this.generation) return;
-          let loaded = this.instruments.get(id);
-          if (!loaded || [...needed].some((pitch) => !loaded?.pitches.has(pitch))) {
-            const pitches = new Set([...(loaded?.pitches ?? []), ...needed, ...warm]);
-            loaded?.audio.dispose();
-            loaded = {
-              voice,
-              pitches,
-              audio: loadInstrument(context, mixer.input(id), voice, [...pitches]),
-            };
-            this.instruments.set(id, loaded);
-          }
-          try {
-            await loaded.audio.ready;
-            warm = [];
-          } catch {
-            if (this.instruments.get(id) === loaded) this.instruments.delete(id);
-            loaded.audio.dispose();
-            throw new Error('音源を読み込めませんでした。通信を確認してください。');
-          }
+      [...required].map(async ([id, voice]) => {
+        let loaded = this.instruments.get(id);
+        if (!loaded) {
+          loaded = { voice, audio: loadInstrument(context, mixer.input(id), voice) };
+          this.instruments.set(id, loaded);
+        }
+        try {
+          await loaded.audio.ready;
+        } catch {
+          if (this.instruments.get(id) === loaded) this.instruments.delete(id);
+          loaded.audio.dispose();
+          throw new Error('音源を読み込めませんでした。通信を確認してください。');
         }
       }),
     );

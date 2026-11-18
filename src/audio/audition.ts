@@ -3,8 +3,7 @@ import type { Track } from '../core/types.ts';
 import { loadInstrument, previewNotes, previewVoice } from './instruments.ts';
 
 export class Audition {
-  private current: { voice: ReturnType<typeof previewVoice>; pitch: number; audio: Smplr } | null =
-    null;
+  private current: { voice: ReturnType<typeof previewVoice>; audio: Smplr } | null = null;
   private request = 0;
 
   constructor(
@@ -18,12 +17,11 @@ export class Audition {
     this.current?.audio.stop();
     if (!notes.length) return;
     const voice = previewVoice(track);
-    if (this.current?.voice !== voice || this.current.pitch !== pitch) {
+    if (this.current?.voice !== voice) {
       this.current?.audio.dispose();
       this.current = {
         voice,
-        pitch,
-        audio: loadInstrument(this.context, this.output, voice, notes, 3),
+        audio: loadInstrument(this.context, this.output, voice),
       };
     }
     const { audio } = this.current;
