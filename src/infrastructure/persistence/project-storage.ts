@@ -1,6 +1,7 @@
 import type { WorkingBranch } from '../../core/history/revisions.ts';
 import type { Project } from '../../core/types.ts';
 import { parseProject } from '../../core/validate.ts';
+import { committedBranch } from '../../core/history/fingerprint.ts';
 const DB = 'music-workbench-v2';
 const draftKey = (projectId: string | null) =>
   projectId === null ? 'scratch' : `project:${projectId}`;
@@ -120,4 +121,59 @@ export async function saveProject(project: Project, working: WorkingBranch | nul
   } finally {
     db.close();
   }
+}
+
+export async function loadCachedRevision(projectId: string, head: string): Promise<Project | null> {
+  const db = await openDB();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction('projects', 'readonly');
+      const request = tx.objectStore('projects').get(`base:${projectId}`);
+      tx.oncomplete = () => {
+        const row: unknown = request.result;
+        try {
+          resolve(
+            row &&
+              typeof row === 'object' &&
+              'head' in row &&
+              row.head === head &&
+              'payload' in row &&
+              typeof row.payload === 'string'
+              ? parseProject(row.payload)
+              : null,
+          );
+        } catch (error) {
+          reject(error);
+        }
+      };
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export async function cacheRevision(branch: WorkingBranch, project: Project): Promise<void> {
+  const payload = JSON.stringify(project);
+  const db = await openDB();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('projects', 'readwrite');
+      tx.objectStore('projects').put({ head: branch.head, payload }, `base:${branch.projectId}`);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export async function rememberRevision(
+  branch: WorkingBranch,
+  project: Project,
+): Promise<WorkingBranch> {
+  await cacheRevision(branch, project);
+  return committedBranch(branch, project);
 }

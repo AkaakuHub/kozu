@@ -66,6 +66,48 @@ const noErrors = (p: ReturnType<typeof simple>) =>
   );
 await test('空の新規プロジェクトは編集可能な譜面として有効', () => noErrors(createBlankProject()));
 
+await test('コミットの差分だけで音符の変更・削除とトラック追加を復元できる', async () => {
+  const { applyScoreChanges, scoreChanges } = await import('../src/core/history/changes.ts');
+  const { projectRows } = await import('../src/core/history/score-rows.ts');
+  const original = createBlankProject();
+  const track = original.tracks[0]!;
+  const clip = [makeNote(0, PPQ, 60), makeNote(PPQ, PPQ, 62)];
+  original.sections[0]!.notes[track.id] = clip;
+  const next = clone(original);
+  next.sections[0]!.notes[track.id]![0]!.velocity = 110;
+  next.sections[0]!.notes[track.id]!.pop();
+  const added = createTrack('drums');
+  next.tracks.push(added);
+  next.sections[0]!.notes[added.id] = [makeNote(0, PPQ, 38)];
+  const changes = scoreChanges(original, next);
+  assert.equal(changes.score_notes?.length, 3);
+  assert.equal(changes.score_tracks?.length, 1);
+  assert.equal(changes.score_clips?.length, 1);
+  const rebuilt = applyScoreChanges(projectRows(original), changes);
+  assert.deepEqual(scoreChanges(next, rebuilt), {});
+  assert.equal(original.sections[0]!.notes[track.id]?.length, 2);
+});
+
+await test('コミット差分は重複した行・存在しない削除・孤立した音符を拒否する', async () => {
+  const { applyScoreChanges } = await import('../src/core/history/changes.ts');
+  const { projectRows } = await import('../src/core/history/score-rows.ts');
+  const original = createBlankProject();
+  const track = original.tracks[0]!;
+  const part = original.sections[0]!;
+  part.notes[track.id] = [makeNote(0, PPQ, 60)];
+  const base = projectRows(original);
+  const row = base.score_notes[0]!;
+  const deletion = { id: row.id, section_id: part.id, track_id: track.id, removed: 1 };
+  assert.throws(() => applyScoreChanges(base, { score_notes: [deletion, deletion] }));
+  assert.throws(() => applyScoreChanges(base, { score_notes: [{ ...deletion, id: 'missing' }] }));
+  assert.throws(() =>
+    applyScoreChanges(base, {
+      score_notes: [{ ...row, id: 'extra', track_id: 'missing', removed: 0 }],
+    }),
+  );
+  assert.throws(() => applyScoreChanges(base, { score_commits: [{ owner: 'other' }] }));
+});
+
 await test('最初の試聴は演奏するサンプルだけで準備でき、再生は重複取得せず全音域を読み込む', async (context) => {
   const { createMelodicBank } = await import('../src/audio/melodic-bank.ts');
   const requested = new Map<string, number>();

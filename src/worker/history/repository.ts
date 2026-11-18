@@ -81,18 +81,20 @@ interface Save {
   expected: string | null;
   message: string;
   project: Project;
+  before?: ScoreRows;
   registerProject?: { subject: string; id: string };
   merge?: { id: number; branch: string; head: string };
 }
 export async function appendCommit(
   db: D1Database,
   save: Save,
-): Promise<{ id: string } | { error: string; status: number }> {
+): Promise<{ id: string; createdAt: number } | { error: string; status: number }> {
   const { owner, branch, expected, message, merge } = save;
-  const before = expected ? await loadRows(db, owner, expected) : null;
+  const before = save.before ?? (expected ? await loadRows(db, owner, expected) : null);
   if (expected && !before) return { error: '変更元のコミットが見つかりません。', status: 409 };
   const next = projectRows(save.project);
   const id = crypto.randomUUID();
+  const createdAt = Date.now();
   const changes = scoreTables.flatMap((table) =>
     statements(db, table, delta(table, before?.[table] ?? [], next[table]), id),
   );
@@ -117,7 +119,7 @@ export async function appendCommit(
     expected,
     merge?.head ?? null,
     message,
-    Date.now(),
+    createdAt,
     owner,
     branch,
     expected,
@@ -171,6 +173,6 @@ export async function appendCommit(
   ]);
   const result = results[register.length + 1];
   return result?.meta.changes
-    ? { id }
+    ? { id, createdAt }
     : { error: 'ブランチが更新されています。最新の履歴を読み込んでください。', status: 409 };
 }

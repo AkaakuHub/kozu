@@ -1,6 +1,6 @@
 import { commonAncestor, mergeRows } from '../../core/history/revisions.ts';
 import { rowsProject } from '../../core/history/score-rows.ts';
-import { parseProjectValue } from '../../core/validate.ts';
+import { applyScoreChanges } from '../../core/history/changes.ts';
 import { appendCommit, loadRows, loadScore, readHistory } from './repository.ts';
 
 const headers = { 'Cache-Control': 'no-store' };
@@ -48,25 +48,31 @@ export async function historyApi(request: Request, db: D1Database, owner: string
       !(input.expected === null || revision(input.expected))
     )
       return failure('ブランチ、親コミット、メッセージを確認してください。', 400);
-    if (input.op === 'restore' && (!('from' in input) || !revision(input.from)))
-      return failure('復元元のコミットを選択してください。', 400);
-    let project;
-    try {
-      project =
-        input.op === 'restore' && 'from' in input && revision(input.from)
-          ? await loadScore(db, owner, input.from)
-          : 'score' in input
-            ? parseProjectValue(input.score)
-            : null;
-    } catch (error) {
-      return failure(error instanceof Error ? error.message : '譜面の形式が不正です。', 422);
+    const { branch, expected } = input;
+    const message = input.message.trim();
+    if (input.op === 'commit') {
+      if (!expected || !('changes' in input) || 'score' in input)
+        return failure('元のコミットと譜面の差分を送信してください。', 400);
+      const before = await loadRows(db, owner, expected);
+      if (!before) return failure('変更元のコミットが見つかりません。', 409);
+      let project;
+      try {
+        project = applyScoreChanges(before, input.changes);
+      } catch (error) {
+        return failure(error instanceof Error ? error.message : '譜面の形式が不正です。', 422);
+      }
+      const result = await appendCommit(db, { owner, branch, expected, message, project, before });
+      return 'error' in result ? failure(result.error, result.status) : json(result, 201);
     }
+    if (!('from' in input) || !revision(input.from))
+      return failure('復元元のコミットを選択してください。', 400);
+    const project = await loadScore(db, owner, input.from);
     if (!project) return failure('対象の譜面が見つかりません。', 404);
     const result = await appendCommit(db, {
       owner,
-      branch: input.branch,
-      expected: input.expected,
-      message: input.message.trim(),
+      branch,
+      expected,
+      message,
       project,
     });
     return 'error' in result ? failure(result.error, result.status) : json(result, 201);
@@ -158,6 +164,7 @@ export async function historyApi(request: Request, db: D1Database, owner: string
       message: pull.title,
       project,
       merge: { id: pull.id, branch: source.name, head: source.head },
+      before: current,
     });
     return 'error' in result ? failure(result.error, result.status) : json(result, 201);
   }

@@ -20,13 +20,16 @@ import { FileMusic, Plus } from 'lucide-react';
 import type { Project } from '../../core/types.ts';
 import type { ScoreProject } from '../../core/score-projects.ts';
 import type { WorkingBranch } from '../../core/history/revisions.ts';
-import { committedBranch } from '../../core/history/fingerprint.ts';
 import {
   createScoreProject,
   readProjects,
   readRevision,
 } from '../../infrastructure/persistence/history-http.ts';
-import { loadDraft, saveProject } from '../../infrastructure/persistence/project-storage.ts';
+import {
+  loadDraft,
+  rememberRevision,
+  saveProject,
+} from '../../infrastructure/persistence/project-storage.ts';
 import { importScore } from '../../infrastructure/persistence/import-score.ts';
 import { useAppearance } from '../workbench/appearance.ts';
 import { MuiAppearance } from '../workbench/MuiAppearance.tsx';
@@ -133,7 +136,7 @@ export default function ProjectLibrary() {
                           const score = await readRevision(item.id, item.head);
                           await openEditor(
                             score,
-                            await committedBranch(
+                            await rememberRevision(
                               { projectId: item.id, branch: 'main', head: item.head },
                               score,
                             ),
@@ -192,7 +195,7 @@ export function ProjectForm({
       );
       await load(
         saved.project,
-        await committedBranch(
+        await rememberRevision(
           { projectId: saved.id, branch: 'main', head: saved.head },
           saved.project,
         ),

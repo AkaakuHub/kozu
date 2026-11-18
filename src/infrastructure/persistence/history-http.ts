@@ -2,6 +2,7 @@ import type { ScoreBranch, ScoreCommit, ScorePull } from '../../core/history/rev
 import type { Project } from '../../core/types.ts';
 import { parseProject } from '../../core/validate.ts';
 import type { ScoreProject } from '../../core/score-projects.ts';
+import type { ScoreChanges } from '../../core/history/changes.ts';
 
 const historyUrl = (projectId: string, revision?: string) => {
   const params = new URLSearchParams({ project: projectId });
@@ -15,7 +16,7 @@ export interface HistoryState {
   pulls: ScorePull[];
 }
 export type HistoryCommand =
-  | { op: 'commit'; branch: string; expected: string | null; message: string; score: Project }
+  | { op: 'commit'; branch: string; expected: string; message: string; changes: ScoreChanges }
   | { op: 'restore'; branch: string; expected: string | null; message: string; from: string }
   | { op: 'branch'; name: string; from: string }
   | { op: 'pull'; source: string; target: string; title: string }
@@ -47,14 +48,19 @@ export async function readRevision(projectId: string, id: string): Promise<Proje
 export async function writeHistory(
   projectId: string,
   command: HistoryCommand,
-): Promise<{ id?: string | number; name?: string }> {
+): Promise<{ id?: string | number; name?: string; createdAt?: number }> {
   const response = await fetch(historyUrl(projectId), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(command),
   });
-  const result: { error?: string; conflicts?: string[]; id?: string | number; name?: string } =
-    await response.json();
+  const result: {
+    error?: string;
+    conflicts?: string[];
+    id?: string | number;
+    name?: string;
+    createdAt?: number;
+  } = await response.json();
   if (!response.ok)
     throw new HistoryError(result.error ?? '履歴を更新できません。', result.conflicts);
   return result;

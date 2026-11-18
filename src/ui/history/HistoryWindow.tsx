@@ -15,7 +15,13 @@ import type { Project } from '../../core/types.ts';
 import { MuiAppearance } from '../workbench/MuiAppearance.tsx';
 import type { WorkingBranch } from '../../core/history/revisions.ts';
 import { commonAncestor } from '../../core/history/revisions.ts';
-import { committedBranch } from '../../core/history/fingerprint.ts';
+import { committedBranch, hasUncommittedChanges } from '../../core/history/fingerprint.ts';
+import { scoreChanges } from '../../core/history/changes.ts';
+import {
+  cacheRevision,
+  loadCachedRevision,
+  rememberRevision,
+} from '../../infrastructure/persistence/project-storage.ts';
 import {
   HistoryError,
   readHistory,
@@ -108,11 +114,46 @@ export function HistoryWindow({ project, working, mark, load, close, commitMode,
   };
   const commit = () =>
     void run(async () => {
-      const result = await send({ op: 'commit', branch, expected, message, score: project });
-      if (typeof result.id === 'string') {
-        mark(await committedBranch({ projectId, branch, head: result.id }, project));
-        select(result.id);
+      if (!expected || expected !== head) return;
+      let base = await loadCachedRevision(projectId, expected);
+      if (!base && !(await hasUncommittedChanges(project, working)))
+        throw new Error('譜面に変更がありません。');
+      if (!base) {
+        base = await readRevision(projectId, expected);
+        await cacheRevision(working, base);
       }
+      const changes = scoreChanges(base, project);
+      if (!Object.keys(changes).length) throw new Error('譜面に変更がありません。');
+      const result = await writeHistory(projectId, {
+        op: 'commit',
+        branch,
+        expected,
+        message,
+        changes,
+      });
+      const { id, createdAt } = result;
+      if (typeof id !== 'string' || typeof createdAt !== 'number')
+        throw new Error('保存したコミットの確認に失敗しました。');
+      const committed = await committedBranch({ projectId, branch, head: id }, project);
+      mark(committed);
+      await cacheRevision(committed, project).catch(() =>
+        setError('クラウドへ保存しましたが、基準の譜面を端末に保存できませんでした。'),
+      );
+      setHistory((old) => ({
+        ...old,
+        branches: old.branches.map((item) => (item.name === branch ? { ...item, head: id } : item)),
+        commits: [
+          {
+            id,
+            parent: expected,
+            merge_parent: null,
+            message: message.trim(),
+            created_at: createdAt,
+          },
+          ...old.commits,
+        ],
+      }));
+      select(id);
       setMessage('');
     });
   const checkout = () =>
@@ -124,8 +165,9 @@ export function HistoryWindow({ project, working, mark, load, close, commitMode,
         )
       )
         return;
-      const score = await readRevision(projectId, head);
-      load(score, await committedBranch({ projectId, branch, head }, score));
+      const score =
+        (await loadCachedRevision(projectId, head)) ?? (await readRevision(projectId, head));
+      load(score, await rememberRevision({ projectId, branch, head }, score));
       select(head);
       close();
     });
@@ -141,7 +183,7 @@ export function HistoryWindow({ project, working, mark, load, close, commitMode,
       });
       if (typeof result.id === 'string') {
         const score = await readRevision(projectId, result.id);
-        load(score, await committedBranch({ projectId, branch, head: result.id }, score));
+        load(score, await rememberRevision({ projectId, branch, head: result.id }, score));
         select(result.id);
         setMessage('');
       }
@@ -248,7 +290,7 @@ export function HistoryWindow({ project, working, mark, load, close, commitMode,
                 <Button
                   type="submit"
                   variant="contained"
-                  disabled={busy || !message.trim() || head !== expected}
+                  disabled={busy || !message.trim() || !expected || head !== expected}
                 >
                   コミット
                 </Button>

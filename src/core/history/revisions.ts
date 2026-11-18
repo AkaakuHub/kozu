@@ -27,7 +27,7 @@ export interface ScorePull {
   merged: string | null;
 }
 
-function identify(table: ScoreTable, row: ScoreRow) {
+export function identify(table: ScoreTable, row: ScoreRow) {
   return JSON.stringify(scoreKeys[table].map((key) => row[key]));
 }
 
