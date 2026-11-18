@@ -50,6 +50,7 @@ export class Player {
         let loaded = this.instruments.get(voice);
         if (!loaded || [...needed].some((pitch) => !loaded?.pitches.has(pitch))) {
           const pitches = new Set([...(loaded?.pitches ?? []), ...needed]);
+          loaded?.audio.dispose();
           loaded = { pitches, audio: loadInstrument(context, this.master!, voice, [...pitches]) };
           this.instruments.set(voice, loaded);
         }
@@ -57,6 +58,7 @@ export class Player {
           await loaded.audio.ready;
         } catch {
           if (this.instruments.get(voice) === loaded) this.instruments.delete(voice);
+          loaded.audio.dispose();
           throw new Error('音源を読み込めませんでした。通信を確認してください。');
         }
       }),
@@ -158,6 +160,7 @@ export class Player {
 
   async dispose() {
     this.stop();
+    for (const instrument of this.instruments.values()) instrument.audio.dispose();
     this.instruments.clear();
     const context = this.context;
     this.context = null;
