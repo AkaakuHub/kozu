@@ -4,3 +4,6 @@ overrides:
 allowBuilds:
   esbuild: true
   workerd: true
+
+minimumReleaseAgeExclude:
+  - cf@1.0.0-rc.1
