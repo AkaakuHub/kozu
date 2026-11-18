@@ -1,6 +1,7 @@
 import { Instrument, SampleLoader } from 'smplr';
 import type { Smplr, SmplrPreset, SmplrRegion } from 'smplr';
 import { instrumentSample } from '../core/instrument-catalog.ts';
+import { defaultProgram } from '../core/instruments.ts';
 import { pitchName } from '../core/theory.ts';
 import type { Track } from '../core/types.ts';
 
@@ -16,13 +17,6 @@ const previewInstrument = Instrument<SmplrPreset>(async (_context, preset, audio
   }
   await audio.loadInstrument(preset, buffers);
 });
-const programs = {
-  melody: 'electric_piano_1',
-  chords: 'acoustic_grand_piano',
-  bass: 'electric_bass_finger',
-  guitar: 'acoustic_guitar_steel',
-  distorted: 'overdriven_guitar',
-};
 const percussion = new Map([
   [35, 'kick'],
   [36, 'kick'],
@@ -49,8 +43,7 @@ const percussion = new Map([
 ]);
 
 export function previewVoice(track: Track) {
-  if (track.kind !== 'drums' && track.program !== undefined) return track.program;
-  return track.kind === 'guitar' && track.guitar.output !== 'voiced' ? 'distorted' : track.kind;
+  return track.kind === 'drums' ? 'drums' : (track.program ?? defaultProgram(track)!);
 }
 
 export function loadInstrument(
@@ -74,7 +67,7 @@ export function loadInstrument(
       groups: [{ regions: samples }],
     });
   }
-  const instrument = typeof voice === 'number' ? instrumentSample(voice) : programs[voice];
+  const instrument = instrumentSample(voice);
   const regions = pitches
     .filter((pitch) => typeof pitch === 'number')
     .map((pitch): SmplrRegion => {

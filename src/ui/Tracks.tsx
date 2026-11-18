@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, Button, Divider, MenuItem, Stack, TextField } from '@mui/material';
 import type { Pattern, Project, Track, TrackKind } from '../core/types.ts';
 import { createTrack } from '../core/presets.ts';
+import { defaultProgram } from '../core/instruments.ts';
 import { Fields, NumberField, Panel } from './shared.tsx';
 interface Props {
   project: Project;
@@ -9,10 +10,10 @@ interface Props {
   change: (update: (p: Project) => void) => void;
 }
 const KIND_NAMES: Record<TrackKind, string> = {
-  melody: 'メロディ',
-  chords: '和音',
-  guitar: 'ギター',
-  bass: 'ベース',
+  melody: '手入力',
+  chords: '和音伴奏',
+  guitar: 'ギター伴奏',
+  bass: 'ベース伴奏',
   drums: 'ドラム',
 };
 const PATTERNS: Record<Pattern, string> = {
@@ -30,7 +31,6 @@ const PATTERNS: Record<Pattern, string> = {
 export function Tracks({ project, current, change }: Props) {
   const [selected, select] = useState(current);
   const track = project.tracks.find((track) => track.id === selected) ?? project.tracks[0]!;
-  const [kind, setKind] = useState<TrackKind>('melody');
   const update = (id: string, fn: (t: Track) => void) =>
     change((p) => fn(p.tracks.find((t) => t.id === id)!));
   const remove = (id: string) => {
@@ -50,37 +50,17 @@ export function Tracks({ project, current, change }: Props) {
   };
   return (
     <Stack gap={2}>
-      <Panel title="トラックを追加">
-        <Fields>
-          <TextField
-            select
-            label="種類"
-            value={kind}
-            onChange={(e) => setKind(e.target.value as TrackKind)}
-            sx={{ minWidth: 160, flex: 1 }}
-          >
-            {Object.entries(KIND_NAMES).map(([k, v]) => (
-              <MenuItem key={k} value={k}>
-                {v}
-              </MenuItem>
-            ))}
-          </TextField>
-          <Button
-            variant="contained"
-            disabled={
-              project.tracks.length >= 16 ||
-              (kind !== 'drums' && project.tracks.filter((t) => t.kind !== 'drums').length >= 15)
-            }
-            onClick={() => {
-              const track = createTrack(kind);
-              change((p) => p.tracks.push(track));
-              select(track.id);
-            }}
-          >
-            追加
-          </Button>
-        </Fields>
-      </Panel>
+      <Button
+        variant="contained"
+        sx={{ alignSelf: 'flex-start' }}
+        onClick={() => {
+          const track = createTrack('melody', `トラック ${project.tracks.length + 1}`);
+          change((next) => next.tracks.push(track));
+          select(track.id);
+        }}
+      >
+        トラックを追加
+      </Button>
       <Panel
         key={track.id}
         title={track.name}
@@ -104,34 +84,64 @@ export function Tracks({ project, current, change }: Props) {
           <Fields>
             <TextField
               select
-              label="自動伴奏"
-              value={track.pattern}
-              onChange={(e) => update(track.id, (t) => (t.pattern = e.target.value as Pattern))}
+              label="伴奏モード"
+              value={track.kind}
+              onChange={(event) => {
+                const kind = event.target.value;
+                if (kind === track.kind || !Object.hasOwn(KIND_NAMES, kind)) return;
+                update(track.id, (next) => {
+                  const program = next.program ?? defaultProgram(next);
+                  next.kind = kind as TrackKind;
+                  next.pattern = next.kind === 'drums' ? 'pop' : 'sustain';
+                  if (program !== undefined) next.program = program;
+                });
+              }}
               sx={{ minWidth: 150, flex: 1 }}
             >
-              {Object.entries(PATTERNS)
-                .filter(([k]) =>
-                  track.kind === 'drums'
-                    ? ['pop', 'halftime', 'doubletime', 'fourOnFloor', 'trap', 'twoStep'].includes(
-                        k,
-                      )
-                    : ['sustain', 'eighths', 'arp'].includes(k) ||
-                      (k === 'cutting' && track.kind === 'guitar'),
-                )
-                .map(([k, v]) => (
-                  <MenuItem key={k} value={k}>
-                    {v}
-                  </MenuItem>
-                ))}
+              {Object.entries(KIND_NAMES).map(([kind, name]) => (
+                <MenuItem key={kind} value={kind}>
+                  {name}
+                </MenuItem>
+              ))}
             </TextField>
-
-            <NumberField
-              label="伴奏オクターブ"
-              min={0}
-              max={7}
-              value={track.octave}
-              onChange={(v) => update(track.id, (t) => (t.octave = Math.round(v)))}
-            />
+            {track.kind !== 'melody' && (
+              <TextField
+                select
+                label="自動伴奏"
+                value={track.pattern}
+                onChange={(e) => update(track.id, (t) => (t.pattern = e.target.value as Pattern))}
+                sx={{ minWidth: 150, flex: 1 }}
+              >
+                {Object.entries(PATTERNS)
+                  .filter(([k]) =>
+                    track.kind === 'drums'
+                      ? [
+                          'pop',
+                          'halftime',
+                          'doubletime',
+                          'fourOnFloor',
+                          'trap',
+                          'twoStep',
+                        ].includes(k)
+                      : ['sustain', 'eighths', 'arp'].includes(k) ||
+                        (k === 'cutting' && track.kind === 'guitar'),
+                  )
+                  .map(([k, v]) => (
+                    <MenuItem key={k} value={k}>
+                      {v}
+                    </MenuItem>
+                  ))}
+              </TextField>
+            )}
+            {track.kind !== 'drums' && track.kind !== 'melody' && (
+              <NumberField
+                label="伴奏オクターブ"
+                min={0}
+                max={7}
+                value={track.octave}
+                onChange={(v) => update(track.id, (t) => (t.octave = Math.round(v)))}
+              />
+            )}
           </Fields>
           {track.kind === 'guitar' && (
             <>

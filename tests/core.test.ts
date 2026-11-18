@@ -781,7 +781,7 @@ void test('トラップと2ステップを指定すると異なるハイハッ�
 void test('型付き履歴から譜面を復元しても楽器・テンポ・音符が再現される', async () => {
   const { projectRows, rowsProject } = await import('../src/core/history/score-rows.ts');
   const project = scoreFixture();
-  project.tracks[0]!.program = 81;
+  project.tracks[0]!.program = 127;
   const rebuilt = rowsProject(projectRows(project));
   const musical = (score: typeof project) =>
     compile(score).notes.map(({ trackId, start, end, pitch, velocity }) => ({
@@ -794,6 +794,41 @@ void test('型付き履歴から譜面を復元しても楽器・テンポ・音
   assert.deepEqual(rebuilt.tracks, project.tracks);
   assert.deepEqual(rebuilt.tempoChanges, project.tempoChanges);
   assert.deepEqual(musical(rebuilt), musical(project));
+});
+
+await test('16本を超えるトラックもMIDIに書き出せて同音が干渉しない', async () => {
+  const { importMidi } = await import('../src/core/midi-import.ts');
+  const { parseMidi } = await import('midi-file');
+  const project = simple();
+  const section = project.sections[0]!;
+  project.tracks = Array.from({ length: 19 }, (_, index) =>
+    createTrack(index >= 17 ? 'drums' : 'melody', `Track ${index + 1}`),
+  );
+  for (const track of project.tracks) {
+    section.notes[track.id] = [
+      {
+        id: `note-${track.id}`,
+        at: 0,
+        duration: PPQ,
+        pitch: { kind: 'absolute', midi: track.kind === 'drums' ? 38 : 60 },
+        velocity: 90,
+        origin: 'manual',
+        locked: true,
+      },
+    ];
+  }
+  project.tracks[16]!.program = 127;
+  const song = compile(parseProject(JSON.stringify(project)));
+  assert.equal(song.notes.length, 19);
+  assert(song.notes.every((note) => note.end === PPQ && note.channel >= 0 && note.channel <= 15));
+  const data = exportMidi(project, song);
+  const midi = parseMidi(data);
+  assert.equal(midi.header.numTracks, 20);
+  assert.equal(midi.tracks[16]?.find((event) => event.type === 'portPrefix')?.port, 1);
+  assert.equal(midi.tracks[19]?.find((event) => event.type === 'portPrefix')?.port, 1);
+  const imported = importMidi(data, 'Track test');
+  assert.equal(imported.tracks.length, 19);
+  assert.equal(imported.tracks[16]!.program, 127);
 });
 
 void test('強さを1個変更したコミットにはその音符だけを保存する', async () => {

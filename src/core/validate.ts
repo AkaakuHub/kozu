@@ -90,11 +90,11 @@ const effect = (x: unknown): boolean => {
   if (!object(x) || !string(x.id) || !pos(x.at)) return false;
   switch (x.kind) {
     case 'break':
-      return number(x.duration) && array(x.tracks, string, 16);
+      return number(x.duration) && array(x.tracks, string);
     case 'accent':
-      return array(x.tracks, string, 16) && number(x.velocity) && bool(x.crash);
+      return array(x.tracks, string) && number(x.velocity) && bool(x.crash);
     case 'thin':
-      return number(x.duration) && array(x.keepTracks, string, 16) && number(x.gain);
+      return number(x.duration) && array(x.keepTracks, string) && number(x.gain);
     case 'groove':
       return number(x.duration) && patterns.includes(String(x.pattern));
     case 'fill':
@@ -118,7 +118,7 @@ function projectShape(x: unknown): x is Project {
     !number(x.initialMeter.denominator) ||
     ![2, 4, 8, 16].includes(x.initialMeter.denominator) ||
     !array(x.sections, section, 128) ||
-    !array(x.tracks, track, 16) ||
+    !array(x.tracks, track) ||
     !array(x.effects, effect, 512) ||
     !array(
       x.tempoChanges,
@@ -177,12 +177,7 @@ export function validate(project: Project): Diagnostic[] {
   const validKey = (k: Project['initialKey']) =>
     Number.isInteger(k.tonic) && bounded(k.tonic, 0, 11) && Object.hasOwn(SCALES, k.mode);
   if (!project.sections.length) issue('error', 'no-sections', '少なくとも1つのパートが必要です。');
-  if (
-    !project.tracks.length ||
-    project.tracks.length > 16 ||
-    project.tracks.filter((t) => t.kind !== 'drums').length > 15
-  )
-    issue('error', 'track-count', 'トラックは1〜16個、音程のあるトラックは15個までです。');
+  if (!project.tracks.length) issue('error', 'track-count', '少なくとも1つのトラックが必要です。');
   if (!bounded(project.initialTempo, 20, 400))
     issue('error', 'tempo', 'BPMは20〜400で指定してください。');
   if (!validKey(project.initialKey)) issue('error', 'key', 'キーの指定が正しくありません。');

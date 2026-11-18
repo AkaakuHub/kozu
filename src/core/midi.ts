@@ -1,6 +1,7 @@
 import { PPQ } from './types.ts';
-import type { CompiledSong, Key, Project } from './types.ts';
+import type { CompiledSong, Key, Project, RenderedNote } from './types.ts';
 import { keyName, mod } from './theory.ts';
+import { midiRouting } from './midi-routing.ts';
 interface Event {
   tick: number;
   priority: number;
@@ -55,6 +56,8 @@ export function exportMidi(project: Project, song: CompiledSong): Uint8Array {
   if (song.diagnostics.some((d) => d.severity === 'error'))
     throw new Error('エラーを修正してからMIDIを書き出してください。');
   if (!song.tempos.length) throw new Error('テンポ情報がありません。');
+  if (project.tracks.length >= 0xffff)
+    throw new Error('MIDIファイルのトラック数の上限を超えています。');
   const master: Event[] = [{ tick: 0, priority: 0, bytes: meta(3, ascii(project.title)) }];
   for (const t of song.tempos) {
     const us = Math.round(60_000_000 / t.bpm);
@@ -79,19 +82,27 @@ export function exportMidi(project: Project, song: CompiledSong): Uint8Array {
   for (const m of song.markers)
     master.push({ tick: m.tick, priority: 5, bytes: meta(6, ascii(m.label)) });
   const trackChunks: number[][] = [encodeTrack(master, song.totalTicks)];
+  const routes = midiRouting(project.tracks);
+  const byTrack = new Map<string, RenderedNote[]>();
+  for (const note of song.notes) {
+    const clip = byTrack.get(note.trackId);
+    if (clip) clip.push(note);
+    else byTrack.set(note.trackId, [note]);
+  }
   for (const track of project.tracks) {
     const events: Event[] = [{ tick: 0, priority: 0, bytes: meta(3, ascii(track.name)) }];
-    for (const note of song.notes.filter((n) => n.trackId === track.id))
+    const { channel, port } = routes.get(track.id)!;
+    if (port > 255) throw new Error('MIDIファイルに割り当てられるポート数を超えています。');
+    if (port > 0) events.push({ tick: 0, priority: 0, bytes: meta(0x21, [port]) });
+    for (const note of byTrack.get(track.id) ?? [])
       events.push(
         { tick: note.start, priority: 3, bytes: [0x90 | note.channel, note.pitch, note.velocity] },
         { tick: note.end, priority: 1, bytes: [0x80 | note.channel, note.pitch, 0] },
       );
-    const channel = song.notes.find((n) => n.trackId === track.id)?.channel;
-    if (channel !== undefined && track.program !== undefined)
+    if (track.program !== undefined && track.kind !== 'drums')
       events.push({ tick: 0, priority: 2, bytes: [0xc0 | channel, track.program] });
-    if (channel !== undefined)
-      for (const br of song.breaks.filter((b) => b.trackId === track.id))
-        events.push({ tick: br.tick, priority: 2, bytes: [0xb0 | channel, 64, 0] });
+    for (const br of song.breaks.filter((event) => event.trackId === track.id))
+      events.push({ tick: br.tick, priority: 2, bytes: [0xb0 | channel, 64, 0] });
     trackChunks.push(encodeTrack(events, song.totalTicks));
   }
   return new Uint8Array([

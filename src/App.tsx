@@ -343,11 +343,7 @@ export default function App() {
               {
                 label: 'ハモリを作成',
                 icon: AudioLines,
-                disabled:
-                  track.kind === 'drums' ||
-                  !part.notes[track.id]?.length ||
-                  project.tracks.length >= 16 ||
-                  project.tracks.filter((item) => item.kind !== 'drums').length >= 15,
+                disabled: track.kind === 'drums' || !part.notes[track.id]?.length,
                 run: () => open('voice'),
               },
               { label: '曲の構成', icon: ListMusic, run: () => open('composition') },

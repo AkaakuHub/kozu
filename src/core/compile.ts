@@ -5,6 +5,7 @@ import { absolutePosition, sectionStarts, timeline, valueAt } from './time.ts';
 import { guitarVoicing } from './guitar.ts';
 import { validate } from './validate.ts';
 import { drumHits } from './drums.ts';
+import { midiRouting } from './midi-routing.ts';
 export function compile(project: Project, mode: 'playback' | 'edit' = 'playback'): CompiledSong {
   const diagnostics = validate(project);
   const empty: CompiledSong = {
@@ -21,15 +22,7 @@ export function compile(project: Project, mode: 'playback' | 'edit' = 'playback'
   const starts = sectionStarts(project);
   const maps = timeline(project);
   const totalTicks = project.sections.reduce((sum, s) => sum + s.length, 0);
-  const channels = new Map<string, number>();
-  let channel = 0;
-  for (const t of project.tracks) {
-    if (t.kind === 'drums') channels.set(t.id, 9);
-    else {
-      if (channel === 9) channel++;
-      channels.set(t.id, channel++);
-    }
-  }
+  const routes = midiRouting(project.tracks);
   const anySolo = project.tracks.some((t) => t.solo);
   const active = project.tracks.filter(
     (t) => mode === 'edit' || (!t.mute && t.gain > 0 && (!anySolo || t.solo)),
@@ -64,7 +57,7 @@ export function compile(project: Project, mode: 'playback' | 'edit' = 'playback'
         1,
         Math.min(127, Math.round(velocity * (mode === 'edit' ? 1 : track.gain))),
       ),
-      channel: channels.get(track.id)!,
+      channel: routes.get(track.id)!.channel,
       string,
     });
   };
@@ -332,12 +325,12 @@ export function compile(project: Project, mode: 'playback' | 'edit' = 'playback'
         return result;
       });
   }
-  // One voice per string and one active note per MIDI pitch/channel. Prevent premature note-off collisions.
+  // Prevent MIDI note-off and guitar string collisions within one track.
   notes.sort((a, b) => a.start - b.start || a.pitch - b.pitch);
   const last = new Map<string, RenderedNote>();
   for (const n of notes) {
     const identities = [
-      `${n.channel}:pitch:${n.pitch}`,
+      `${n.trackId}:pitch:${n.pitch}`,
       ...(n.string === null ? [] : [`${n.trackId}:string:${n.string}`]),
     ];
     for (const identity of identities) {
