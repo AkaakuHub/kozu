@@ -18,7 +18,7 @@ interface Props {
   active: string;
   choose: (id: string) => void;
   trackId: string;
-  selectTrack: (id: string) => void;
+  selectTrack: (id: string, sectionId?: string) => void;
   chooseInstrument: (id: string) => void;
   preferences: Preferences;
   updatePreferences: (preferences: Preferences) => void;
@@ -164,10 +164,7 @@ export const Arrangement = memo(function Arrangement({
                     key={track.id}
                     className="arrangement-track"
                     aria-label={`${section.name}の${track.name}`}
-                    onClick={() => {
-                      choose(section.id);
-                      selectTrack(track.id);
-                    }}
+                    onClick={() => selectTrack(track.id, section.id)}
                     data-active={track.id === trackId}
                     data-muted={track.mute}
                   >

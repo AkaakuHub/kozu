@@ -479,7 +479,13 @@ export default function App() {
         active={part.id}
         choose={choosePart}
         trackId={track.id}
-        selectTrack={setTrack}
+        selectTrack={(id, sectionId) => {
+          setTrack(id);
+          if (sectionId && playback === 'stopped') {
+            setPart(sectionId);
+            position(starts.get(sectionId)!);
+          }
+        }}
         requestDelete={requestDelete}
         chooseInstrument={(id) => {
           setTrack(id);
