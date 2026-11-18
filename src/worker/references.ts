@@ -8,8 +8,10 @@ const short = (value: unknown): value is string => typeof value === 'string' && 
 export async function referencesApi(request: Request, db: D1Database, owner: string) {
   if (request.method === 'GET') {
     const { results } = await db
-      .prepare(`SELECT id, revision, section_id, title, artist, source, note
-      FROM score_references WHERE owner = ? ORDER BY title, id`)
+      .prepare(`SELECT r.id, p.id AS projectId, r.revision, r.section_id, r.title, r.artist, r.source, r.note
+      FROM score_references r JOIN score_commits c ON c.id = r.revision
+      JOIN score_projects p ON p.owner = c.owner AND p.subject = r.owner
+      WHERE r.owner = ? ORDER BY r.title, r.id`)
       .bind(owner)
       .all<ProgressionReference>();
     return json(results);
@@ -63,7 +65,12 @@ export async function referencesApi(request: Request, db: D1Database, owner: str
       return json({ error: '参照元にはhttpまたはhttpsのURLを入力してください。' }, 400);
     }
   }
-  const saved = await loadScore(db, owner, value.revision);
+  const historyOwner = await db
+    .prepare(`SELECT p.owner FROM score_projects p JOIN score_commits c ON c.owner = p.owner
+    WHERE p.subject = ? AND c.id = ?`)
+    .bind(owner, value.revision)
+    .first<string>('owner');
+  const saved = historyOwner ? await loadScore(db, historyOwner, value.revision) : null;
   const section = saved?.sections.find(
     (item) => 'section_id' in value && item.id === value.section_id,
   );

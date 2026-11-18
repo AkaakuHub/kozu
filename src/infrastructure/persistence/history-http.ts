@@ -1,6 +1,13 @@
 import type { ScoreBranch, ScoreCommit, ScorePull } from '../../core/history/revisions.ts';
 import type { Project } from '../../core/types.ts';
 import { parseProject } from '../../core/validate.ts';
+import type { ScoreProject } from '../../core/score-projects.ts';
+
+const historyUrl = (projectId: string, revision?: string) => {
+  const params = new URLSearchParams({ project: projectId });
+  if (revision) params.set('revision', revision);
+  return `/api/history?${params}`;
+};
 
 export interface HistoryState {
   branches: ScoreBranch[];
@@ -23,14 +30,14 @@ export class HistoryError extends Error {
   }
 }
 
-export async function readHistory(): Promise<HistoryState> {
-  const response = await fetch('/api/history', { cache: 'no-store' });
+export async function readHistory(projectId: string): Promise<HistoryState> {
+  const response = await fetch(historyUrl(projectId), { cache: 'no-store' });
   if (!response.ok) throw new Error('クラウドの履歴を取得できません。');
   return response.json();
 }
 
-export async function readRevision(id: string): Promise<Project> {
-  const response = await fetch(`/api/history?revision=${encodeURIComponent(id)}`, {
+export async function readRevision(projectId: string, id: string): Promise<Project> {
+  const response = await fetch(historyUrl(projectId, id), {
     cache: 'no-store',
   });
   if (!response.ok) throw new Error('コミットの譜面を取得できません。');
@@ -38,9 +45,10 @@ export async function readRevision(id: string): Promise<Project> {
 }
 
 export async function writeHistory(
+  projectId: string,
   command: HistoryCommand,
 ): Promise<{ id?: string | number; name?: string }> {
-  const response = await fetch('/api/history', {
+  const response = await fetch(historyUrl(projectId), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(command),
@@ -50,4 +58,29 @@ export async function writeHistory(
   if (!response.ok)
     throw new HistoryError(result.error ?? '履歴を更新できません。', result.conflicts);
   return result;
+}
+
+export async function readProjects(): Promise<ScoreProject[]> {
+  const response = await fetch('/api/projects', { cache: 'no-store' });
+  if (!response.ok) throw new Error('プロジェクト一覧を取得できません。');
+  return response.json();
+}
+
+export async function createScoreProject(
+  input: { id: string; title: string } & ({ section: string } | { score: Project }),
+): Promise<ScoreProject & { project: Project }> {
+  const response = await fetch('/api/projects', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    const error: unknown = await response.json().catch(() => null);
+    throw new Error(
+      error && typeof error === 'object' && 'error' in error && typeof error.error === 'string'
+        ? error.error
+        : 'プロジェクトを保存できませんでした。',
+    );
+  }
+  return response.json();
 }

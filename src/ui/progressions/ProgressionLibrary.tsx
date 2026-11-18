@@ -65,7 +65,7 @@ export function ProgressionLibrary({
     setOriginal(null);
     if (!item) return;
     let live = true;
-    void readRevision(item.revision)
+    void readRevision(item.projectId, item.revision)
       .then((score) => {
         const section = score.sections.find((part) => part.id === item.section_id);
         if (live && section) setOriginal({ score, section });

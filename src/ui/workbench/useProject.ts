@@ -89,6 +89,14 @@ export function useProject(notify: (message: string) => void) {
     project,
     ready,
     commit,
+    replace: async (next: Project, origin: WorkingBranch | null) => {
+      if (storageBlocked) throw new Error('端末への保存を再開してから曲を切り替えてください。');
+      await saveProject(project, working);
+      await saveProject(next, origin);
+      setHistory({ past: [], present: next, future: [] });
+      mark(origin);
+      setLastSaved({ project: next, working: origin });
+    },
     undo: history.past.length ? undo : null,
     redo: history.future.length ? redo : null,
     working,

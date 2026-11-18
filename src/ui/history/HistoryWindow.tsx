@@ -31,7 +31,7 @@ import './history.css';
 
 interface Props {
   project: Project;
-  working: WorkingBranch | null;
+  working: WorkingBranch;
   mark: (branch: WorkingBranch) => void;
   load: (project: Project, branch: WorkingBranch) => void;
   close: () => void;
@@ -42,7 +42,8 @@ const empty: HistoryState = { branches: [], commits: [], pulls: [] };
 
 export function HistoryWindow({ project, working, mark, load, close, commitMode, mode }: Props) {
   const [history, setHistory] = useState(empty);
-  const [branch, setBranch] = useState(working?.branch ?? 'main');
+  const [branch, setBranch] = useState(working.branch);
+  const projectId = working.projectId;
   const [revision, select] = useState('');
   const [message, setMessage] = useState('');
   const [newBranch, setNewBranch] = useState('');
@@ -56,7 +57,7 @@ export function HistoryWindow({ project, working, mark, load, close, commitMode,
 
   useEffect(() => {
     let live = true;
-    void readHistory()
+    void readHistory(projectId)
       .then((state) => {
         if (!live) return;
         setHistory(state);
@@ -71,16 +72,16 @@ export function HistoryWindow({ project, working, mark, load, close, commitMode,
     return () => {
       live = false;
     };
-  }, []);
+  }, [projectId]);
 
   const head = history.branches.find((b) => b.name === branch)?.head ?? null;
   const selected = history.commits.find((entry) => entry.id === revision);
   const pull = history.pulls.find((entry) => entry.id === pullId);
   const incoming = history.branches.find((b) => b.name === pull?.source)?.head;
   const destination = history.branches.find((b) => b.name === pull?.target)?.head;
-  const expected = working?.branch === branch ? working.head : null;
+  const expected = working.branch === branch ? working.head : null;
   const refresh = async () => {
-    const state = await readHistory();
+    const state = await readHistory(projectId);
     setHistory(state);
     return state;
   };
@@ -98,7 +99,7 @@ export function HistoryWindow({ project, working, mark, load, close, commitMode,
     }
   };
   const send = async (command: HistoryCommand) => {
-    const result = await writeHistory(command);
+    const result = await writeHistory(projectId, command);
     await refresh().catch(() =>
       setError('更新を保存しました。履歴の表示は「更新」で読み込み直してください。'),
     );
@@ -108,7 +109,7 @@ export function HistoryWindow({ project, working, mark, load, close, commitMode,
     void run(async () => {
       const result = await send({ op: 'commit', branch, expected, message, score: project });
       if (typeof result.id === 'string') {
-        mark({ branch, head: result.id });
+        mark({ projectId, branch, head: result.id });
         select(result.id);
       }
       setMessage('');
@@ -122,7 +123,7 @@ export function HistoryWindow({ project, working, mark, load, close, commitMode,
         )
       )
         return;
-      load(await readRevision(head), { branch, head });
+      load(await readRevision(projectId, head), { projectId, branch, head });
       select(head);
       close();
     });
@@ -137,7 +138,7 @@ export function HistoryWindow({ project, working, mark, load, close, commitMode,
         message: message.trim() || `復元 ${revision.slice(0, 7)}`,
       });
       if (typeof result.id === 'string') {
-        load(await readRevision(result.id), { branch, head: result.id });
+        load(await readRevision(projectId, result.id), { projectId, branch, head: result.id });
         select(result.id);
         setMessage('');
       }
@@ -145,8 +146,8 @@ export function HistoryWindow({ project, working, mark, load, close, commitMode,
   const compare = (first: string | null, second: string | Project) =>
     void run(async () => {
       const [a, b] = await Promise.all([
-        first ? readRevision(first) : null,
-        typeof second === 'string' ? readRevision(second) : second,
+        first ? readRevision(projectId, first) : null,
+        typeof second === 'string' ? readRevision(projectId, second) : second,
       ]);
       setDiff(
         createTwoFilesPatch(

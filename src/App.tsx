@@ -7,7 +7,6 @@ import {
   FileDown,
   FileMusic,
   FolderOpen,
-  FilePlus2,
   FlipHorizontal2,
   Guitar,
   ListMusic,
@@ -23,7 +22,7 @@ import {
 import { Player } from './audio/player.ts';
 import { compile } from './core/compile.ts';
 import { exportMidi } from './core/midi.ts';
-import { createBlankProject, createSection } from './core/presets.ts';
+import { createSection } from './core/presets.ts';
 import { growSection, measureTicks } from './core/section-length.ts';
 import { sectionStarts, ticksToSeconds, valueAt } from './core/time.ts';
 import { clone } from './core/types.ts';
@@ -44,6 +43,9 @@ import './ui/workbench/workbench.css';
 const HistoryWindow = lazy(() =>
   import('./ui/history/HistoryWindow.tsx').then((module) => ({ default: module.HistoryWindow })),
 );
+const ProjectLibrary = lazy(() =>
+  import('./ui/history/ProjectLibrary.tsx').then((module) => ({ default: module.ProjectLibrary })),
+);
 const Windows = lazy(() =>
   import('./ui/workbench/Windows.tsx').then((module) => ({ default: module.Windows })),
 );
@@ -58,7 +60,9 @@ export default function App() {
   const colorMode = useAppearance(appearance);
   const { project, commit } = session;
   const [timelineTick, setTimelineTick] = useState(0);
-  const [windowName, open] = useState<WindowName | 'history' | 'commit' | null>(null);
+  const [windowName, open] = useState<
+    WindowName | 'history' | 'commit' | 'projects' | 'registerProject' | null
+  >(null);
   const [partId, setPart] = useState('');
   const [trackId, setTrack] = useState('');
   const [head, setHead] = useState(0);
@@ -233,7 +237,7 @@ export default function App() {
   const tempo = song.tempos.length ? valueAt(song.tempos, head).bpm : project.initialTempo;
 
   const saveCloud = () => {
-    if (!hasErrors) open('commit');
+    if (!hasErrors) open(session.working ? 'commit' : 'registerProject');
   };
   const toggleLoop = () => {
     stop();
@@ -266,13 +270,9 @@ export default function App() {
             compact: true,
             commands: [
               {
-                label: '新規プロジェクト',
-                icon: FilePlus2,
-                run: () => {
-                  const next = createBlankProject();
-                  commit(next);
-                  focusProject(next);
-                },
+                label: 'プロジェクト一覧',
+                icon: LibraryBig,
+                run: () => open('projects'),
               },
               {
                 label: 'MIDI・JSONを開く',
@@ -283,10 +283,11 @@ export default function App() {
               {
                 label: '履歴とブランチ',
                 icon: GitBranch,
+                disabled: !session.working,
                 run: () => open('history'),
               },
               {
-                label: '譜面をコミット',
+                label: session.working ? '譜面をコミット' : 'プロジェクトに保存',
                 icon: CloudUpload,
                 shortcut: 'Ctrl/⌘+S',
                 disabled: hasErrors,
@@ -472,7 +473,22 @@ export default function App() {
           </span>
         )}
       </footer>
-      {(windowName === 'history' || windowName === 'commit') && (
+      {(windowName === 'projects' || windowName === 'registerProject') && (
+        <Suspense fallback={null}>
+          <ProjectLibrary
+            project={project}
+            working={session.working}
+            register={windowName === 'registerProject'}
+            mode={colorMode}
+            load={async (next, working) => {
+              await session.replace(next, working);
+              focusProject(next);
+            }}
+            close={() => open(null)}
+          />
+        </Suspense>
+      )}
+      {(windowName === 'history' || windowName === 'commit') && session.working && (
         <Suspense fallback={null}>
           <HistoryWindow
             mode={colorMode}
@@ -489,39 +505,43 @@ export default function App() {
           />
         </Suspense>
       )}
-      {windowName && windowName !== 'history' && windowName !== 'commit' && (
-        <Suspense fallback={null}>
-          <Windows
-            key={windowName}
-            view={windowName}
-            timelineTick={timelineTick}
-            track={track}
-            working={session.working}
-            mode={colorMode}
-            appearance={appearance}
-            setAppearance={(value) => updatePreferences({ appearance: value })}
-            scaleGuide={scaleGuide}
-            setScaleGuide={(value) => updatePreferences({ scaleGuide: value })}
-            notePreview={notePreview}
-            setNotePreview={(value) => updatePreferences({ notePreview: value })}
-            open={open}
-            close={() => open(null)}
-            project={project}
-            section={part}
-            song={song}
-            sectionStart={sectionStart}
-            sectionMeasure={sectionMeasure}
-            commit={commit}
-            change={change}
-            changeSection={changeSection}
-            setSelected={(id) => {
-              setPart(id);
-              position(starts.get(id) ?? sectionStart);
-            }}
-            add={add}
-          />
-        </Suspense>
-      )}
+      {windowName &&
+        windowName !== 'history' &&
+        windowName !== 'commit' &&
+        windowName !== 'projects' &&
+        windowName !== 'registerProject' && (
+          <Suspense fallback={null}>
+            <Windows
+              key={windowName}
+              view={windowName}
+              timelineTick={timelineTick}
+              track={track}
+              working={session.working}
+              mode={colorMode}
+              appearance={appearance}
+              setAppearance={(value) => updatePreferences({ appearance: value })}
+              scaleGuide={scaleGuide}
+              setScaleGuide={(value) => updatePreferences({ scaleGuide: value })}
+              notePreview={notePreview}
+              setNotePreview={(value) => updatePreferences({ notePreview: value })}
+              open={open}
+              close={() => open(null)}
+              project={project}
+              section={part}
+              song={song}
+              sectionStart={sectionStart}
+              sectionMeasure={sectionMeasure}
+              commit={commit}
+              change={change}
+              changeSection={changeSection}
+              setSelected={(id) => {
+                setPart(id);
+                position(starts.get(id) ?? sectionStart);
+              }}
+              add={add}
+            />
+          </Suspense>
+        )}
       {message && (
         <div role="status" className="work-toast" onClick={() => notify('')}>
           {message}

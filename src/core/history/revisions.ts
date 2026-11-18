@@ -2,6 +2,7 @@ import { scoreKeys, scoreTables } from './score-rows.ts';
 import type { ScoreRow, ScoreRows, ScoreTable } from './score-rows.ts';
 
 export interface WorkingBranch {
+  projectId: string;
   branch: string;
   head: string;
 }

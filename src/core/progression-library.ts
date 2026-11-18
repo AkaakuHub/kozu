@@ -5,6 +5,7 @@ import type { Pitch, Project, Section } from './types.ts';
 
 export interface ProgressionReference {
   id: string;
+  projectId: string;
   revision: string;
   section_id: string;
   title: string;

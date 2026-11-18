@@ -96,6 +96,7 @@ interface Save {
   expected: string | null;
   message: string;
   project: Project;
+  registerProject?: { subject: string; id: string };
   merge?: { id: number; branch: string; head: string };
 }
 export async function appendCommit(
@@ -151,7 +152,39 @@ export async function appendCommit(
           .bind(id, owner, merge.id, id),
       ]
     : [];
-  const [, result] = await db.batch([seed, commit, ...changes, update, ...finish]);
+  const register = save.registerProject
+    ? [
+        db
+          .prepare(`INSERT INTO score_projects
+    (subject, id, owner, title, created_at) VALUES (?, ?, ?, ?, ?)`)
+          .bind(
+            save.registerProject.subject,
+            save.registerProject.id,
+            owner,
+            save.project.title,
+            Date.now(),
+          ),
+      ]
+    : [];
+  const title =
+    branch === 'main' && save.project.title.trim()
+      ? [
+          db
+            .prepare(`UPDATE score_projects SET title = ?
+    WHERE owner = ? AND title <> ? AND EXISTS (SELECT 1 FROM score_commits WHERE id = ?)`)
+            .bind(save.project.title, owner, save.project.title, id),
+        ]
+      : [];
+  const results = await db.batch([
+    ...register,
+    seed,
+    commit,
+    ...changes,
+    update,
+    ...title,
+    ...finish,
+  ]);
+  const result = results[register.length + 1];
   return result?.meta.changes
     ? { id }
     : { error: 'ブランチが更新されています。最新の履歴を読み込んでください。', status: 409 };
