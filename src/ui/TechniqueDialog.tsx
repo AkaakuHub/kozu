@@ -20,8 +20,8 @@ const TECHNIQUES = [
   ['jump', '跳びポ'],
   ['restate', '言い直し'],
   ['restateMod', '言い直し＋転調'],
-  ['mod', '転調'],
-  ['temporaryMod', '一時転調'],
+  ['mod', '移調'],
+  ['temporaryMod', '指定範囲を移調'],
   ['break', 'ブレイク'],
   ['drop', '落ちサビ'],
   ['half', 'ハーフタイム'],
@@ -205,11 +205,6 @@ export function TechniqueDialog({
           {['jump', 'break'].includes(kind) && (
             <Alert severity="info">
               MIDIではノートオフを出力します。Logic側の残響やワンショット音源まで完全な無音にする設定は含みません。
-            </Alert>
-          )}
-          {['mod', 'temporaryMod'].includes(kind) && (
-            <Alert severity="info">
-              度数指定の音は新しいキーに追従します。固定音高・ドラムは移調しません。
             </Alert>
           )}
           {error && <Alert severity="error">{error}</Alert>}

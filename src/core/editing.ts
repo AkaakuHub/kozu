@@ -1,19 +1,19 @@
 import { clone, PPQ, uid } from './types.ts';
 import type { Effect, Position, Project, Section } from './types.ts';
 import { keyAt, sectionStarts, timeline, valueAt, absolutePosition } from './time.ts';
-import { transposeKey } from './theory.ts';
+import { resolvePitch } from './theory.ts';
+import { applyEffects, copyNotesInRange, transposeNotes } from './technique-notes.ts';
 export function insertJump(
   project: Project,
   at: Position,
   restTicks: number = PPQ,
   keepLead = true,
 ): Project {
-  const p = clone(project);
-  const section = p.sections.find((s) => s.id === at.sectionId);
+  const section = project.sections.find((s) => s.id === at.sectionId);
   if (!section || restTicks <= 0 || at.tick + restTicks >= section.length)
     throw new Error('アクセントを置く位置までパート内に収めてください。');
-  const tracks = p.tracks.filter((t) => !keepLead || t.kind !== 'melody').map((t) => t.id);
-  p.effects.push(
+  const tracks = project.tracks.filter((t) => !keepLead || t.kind !== 'melody').map((t) => t.id);
+  return applyEffects(project, [
     { id: uid('break'), kind: 'break', at, duration: restTicks, tracks },
     {
       id: uid('accent'),
@@ -23,8 +23,7 @@ export function insertJump(
       velocity: 110,
       crash: true,
     },
-  );
-  return p;
+  ]);
 }
 export function modulate(
   project: Project,
@@ -32,26 +31,7 @@ export function modulate(
   semitones: number,
   duration: number | null = null,
 ): Project {
-  const p = clone(project);
-  const old = keyAt(project, at);
-  const target = transposeKey(old, semitones);
-  const section = p.sections.find((s) => s.id === at.sectionId);
-  if (!section) throw new Error('パートがありません。');
-  if (duration !== null && (duration <= 0 || at.tick + duration >= section.length))
-    throw new Error('戻る位置までパート内に収めてください。');
-  const restored = duration !== null ? keyAt(project, { ...at, tick: at.tick + duration }) : null;
-  p.keyChanges = p.keyChanges.filter(
-    (k) => !(k.at.sectionId === at.sectionId && k.at.tick === at.tick),
-  );
-  p.keyChanges.push({ id: uid('key'), at, key: target });
-  if (duration !== null && restored) {
-    const end = { ...at, tick: at.tick + duration };
-    p.keyChanges = p.keyChanges.filter(
-      (k) => !(k.at.sectionId === end.sectionId && k.at.tick === end.tick),
-    );
-    p.keyChanges.push({ id: uid('key'), at: end, key: restored });
-  }
-  return p;
+  return transposeNotes(project, at, semitones, duration);
 }
 /** Insert a copied musical slice before a section. All later events keep their section anchors. */
 export function insertRestatement(
@@ -67,6 +47,9 @@ export function insertRestatement(
   const index = p.sections.findIndex((s) => s.id === destinationId);
   if (!source || index < 0 || from < 0 || length <= 0 || from + length > source.length)
     throw new Error('反復するフレーズの範囲が正しくありません。');
+  const maps = timeline(project),
+    starts = sectionStarts(project);
+  const globalFrom = absolutePosition({ sectionId: sourceId, tick: from }, starts);
   const repeated: Section = {
     ...clone(source),
     id: uid('section'),
@@ -75,35 +58,37 @@ export function insertRestatement(
     variant: 'normal',
     sourceSectionId: source.id,
     length,
-    notes: {},
+    notes: copyNotesInRange(project, globalFrom, globalFrom + length),
     chords: [],
   };
   repeated.chords = source.chords
     .filter((c) => c.at < from + length && c.at + c.duration > from)
-    .map((c) => ({
-      ...clone(c),
-      id: uid('chord'),
-      at: Math.max(c.at, from) - from,
-      duration: Math.min(c.at + c.duration, from + length) - Math.max(c.at, from),
-    }));
-  for (const [id, notes] of Object.entries(source.notes))
-    repeated.notes[id] = notes
-      .filter((n) => n.at < from + length && n.at + n.duration > from)
-      .map((n) => ({
-        ...clone(n),
-        id: uid('note'),
-        at: Math.max(n.at, from) - from,
-        duration: Math.min(n.at + n.duration, from + length) - Math.max(n.at, from),
-      }));
-  const maps = timeline(project),
-    starts = sectionStarts(project);
-  const globalFrom = absolutePosition({ sectionId: sourceId, tick: from }, starts);
-  const sourceKey = keyAt(project, { sectionId: sourceId, tick: from });
-  const destinationKey = keyAt(project, { sectionId: destinationId, tick: 0 });
+    .flatMap((c) => {
+      const start = Math.max(c.at, from);
+      const end = Math.min(c.at + c.duration, from + length);
+      const base = starts.get(sourceId)!;
+      const boundaries = [
+        start,
+        ...maps.keys
+          .filter(({ tick }) => tick > base + start && tick < base + end)
+          .map(({ tick }) => tick - base),
+        end,
+      ];
+      return boundaries.slice(0, -1).map((tick, index) => {
+        const key = valueAt(maps.keys, base + tick).key;
+        return {
+          ...clone(c),
+          id: uid('chord'),
+          at: tick - from,
+          duration: boundaries[index + 1]! - tick,
+          root: { kind: 'absolute' as const, midi: resolvePitch(c.root, key) },
+          bass: c.bass && { kind: 'absolute' as const, midi: resolvePitch(c.bass, key) },
+        };
+      });
+    });
   const destinationTempo = valueAt(maps.tempos, starts.get(destinationId)!).bpm;
   const destinationMeter = valueAt(maps.meters, starts.get(destinationId)!);
   p.sections.splice(index, 0, repeated);
-  p.keyChanges.push({ id: uid('key'), at: { sectionId: repeated.id, tick: 0 }, key: sourceKey });
   p.tempoChanges.push({
     id: uid('tempo'),
     at: { sectionId: repeated.id, tick: 0 },
@@ -126,13 +111,6 @@ export function insertRestatement(
         bpm: point.bpm,
         ramp: null,
       });
-  for (const point of maps.keys)
-    if (point.tick > globalFrom && point.tick < globalFrom + length)
-      p.keyChanges.push({
-        id: uid('key'),
-        at: { sectionId: repeated.id, tick: point.tick - globalFrom },
-        key: clone(point.key),
-      });
   for (const point of maps.meters)
     if (point.tick > globalFrom && point.tick < globalFrom + length)
       p.meterChanges.push({
@@ -141,24 +119,7 @@ export function insertRestatement(
         numerator: point.numerator,
         denominator: point.denominator,
       });
-  for (const effect of project.effects.filter((e) => e.at.sectionId === sourceId)) {
-    const start = effect.at.tick,
-      end = 'duration' in effect ? start + effect.duration : start + 1;
-    if (start >= from + length || end <= from) continue;
-    const copy = clone(effect);
-    copy.id = uid('effect');
-    copy.at = { sectionId: repeated.id, tick: Math.max(start, from) - from };
-    if ('duration' in copy) copy.duration = Math.min(end, from + length) - Math.max(start, from);
-    p.effects.push(copy);
-  }
-  // Explicitly restore the destination context: standalone restatement must not cause a modulation.
   const dest = { sectionId: destinationId, tick: 0 };
-  p.keyChanges = p.keyChanges.filter((k) => !(k.at.sectionId === destinationId && k.at.tick === 0));
-  p.keyChanges.push({
-    id: uid('key'),
-    at: dest,
-    key: shift === null ? destinationKey : transposeKey(sourceKey, shift),
-  });
   if (!p.tempoChanges.some((t) => t.at.sectionId === destinationId && t.at.tick === 0))
     p.tempoChanges.push({ id: uid('tempo'), at: dest, bpm: destinationTempo, ramp: null });
   if (!p.meterChanges.some((t) => t.at.sectionId === destinationId && t.at.tick === 0))
@@ -168,27 +129,24 @@ export function insertRestatement(
       numerator: destinationMeter.numerator,
       denominator: destinationMeter.denominator,
     });
-  return p;
+  return shift === null ? p : transposeNotes(p, dest, shift, null);
 }
 export function addDrop(project: Project, sectionId: string): Project {
-  const p = clone(project);
-  const s = p.sections.find((s) => s.id === sectionId);
+  const s = project.sections.find((s) => s.id === sectionId);
   if (!s) throw new Error('パートがありません。');
-  s.variant = 'drop';
-  p.effects.push({
+  return addEffect(project, {
     id: uid('drop'),
     kind: 'thin',
     at: { sectionId, tick: 0 },
     duration: s.length,
-    keepTracks: p.tracks.filter((t) => t.kind === 'melody' || t.kind === 'chords').map((t) => t.id),
+    keepTracks: project.tracks
+      .filter((t) => t.kind === 'melody' || t.kind === 'chords')
+      .map((t) => t.id),
     gain: 0.65,
   });
-  return p;
 }
 export function addEffect(project: Project, effect: Effect): Project {
-  const p = clone(project);
-  p.effects.push(effect);
-  return p;
+  return applyEffects(project, [effect]);
 }
 export function removeSection(project: Project, id: string): Project {
   if (project.sections.length <= 1) throw new Error('最後のパートは削除できません。');

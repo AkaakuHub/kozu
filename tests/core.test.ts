@@ -156,7 +156,7 @@ await test('new tempo event interrupts a previous ramp', () => {
   ];
   assert.equal(valueAt(timeline(p).tempos, PPQ * 6).bpm, 80);
 });
-await test('intra-section modulation changes only following degree notes', () => {
+await test('移調は以降の音高を確定し、キーイベントを追加しない', () => {
   let p = simple();
   const s = p.sections[0]!,
     t = p.tracks.find((t) => t.kind === 'melody')!;
@@ -170,6 +170,9 @@ await test('intra-section modulation changes only following degree notes', () =>
     locked: true,
   }));
   p = modulate(p, { sectionId: s.id, tick: PPQ * 4 }, 2);
+  assert.deepEqual(p.keyChanges, []);
+  assert.equal(p.sections[0]!.notes[t.id]![0]!.id, 'n0');
+  assert.deepEqual(p.sections[0]!.notes[t.id]![1]!.pitch, { kind: 'absolute', midi: 62 });
   assert.deepEqual(
     compile(p)
       .notes.filter((n) => n.trackId === t.id)
@@ -177,21 +180,30 @@ await test('intra-section modulation changes only following degree notes', () =>
     [60, 62],
   );
 });
-await test('temporary modulation restores the previous context', () => {
-  let p = simple();
-  const at = { sectionId: p.sections[0]!.id, tick: PPQ };
-  p = modulate(p, at, 3, PPQ * 4);
-  assert.equal(keyAt(p, { ...at, tick: PPQ * 2 }).tonic, 3);
-  assert.equal(keyAt(p, { ...at, tick: PPQ * 6 }).tonic, 0);
-});
-await test('downward key changes are supported', () => {
+await test('範囲を下へ移調すると持続音は境界で分かれる', () => {
   const p = simple();
-  assert.equal(
-    keyAt(modulate(p, { sectionId: p.sections[0]!.id, tick: 0 }, -1), {
-      sectionId: p.sections[0]!.id,
-      tick: 0,
-    }).tonic,
-    11,
+  const s = p.sections[0]!;
+  const t = p.tracks[0]!;
+  s.notes[t.id] = [
+    {
+      id: 'note',
+      at: 0,
+      duration: 3 * PPQ,
+      pitch: { kind: 'absolute', midi: 60 },
+      velocity: 90,
+      origin: 'manual',
+      locked: true,
+    },
+  ];
+  const next = modulate(p, { sectionId: s.id, tick: PPQ }, -1, PPQ);
+  assert.deepEqual(next.keyChanges, []);
+  assert.deepEqual(
+    next.sections[0]!.notes[t.id]!.map((note) => [note.at, note.duration, note.pitch]),
+    [
+      [0, PPQ, { kind: 'absolute', midi: 60 }],
+      [PPQ, PPQ, { kind: 'absolute', midi: 59 }],
+      [2 * PPQ, PPQ, { kind: 'absolute', midi: 60 }],
+    ],
   );
 });
 await test('single restatement does not force modulation', () => {
@@ -207,8 +219,7 @@ await test('restatement plus modulation is a composite operation', () => {
   const p = simple(),
     s = p.sections[0]!;
   const result = insertRestatement(p, s.id, 0, PPQ * 2, s.id, 2);
-  assert.equal(keyAt(result, { sectionId: result.sections[0]!.id, tick: 0 }).tonic, 0);
-  assert.equal(keyAt(result, { sectionId: s.id, tick: 0 }).tonic, 2);
+  assert.deepEqual(result.keyChanges, []);
   assert.equal(p.sections.length, 1);
 });
 await test('restatement clips held notes at both boundaries', () => {
@@ -262,6 +273,11 @@ await test('jump keeps lead while cutting accompaniment, including sustains', ()
   ];
   const r = insertJump(p, { sectionId: s.id, tick: PPQ }, PPQ, true),
     song = compile(r);
+  assert.deepEqual(r.effects, []);
+  assert.equal(r.sections[0]!.notes[lead.id]![0]!.id, 'lead');
+  const notes = (rendered: typeof song) =>
+    rendered.notes.map((n) => `${n.trackId}:${n.start}:${n.end}:${n.pitch}`).sort();
+  assert.deepEqual(notes(compile(r, 'edit')), notes(song));
   assert(song.notes.some((n) => n.trackId === lead.id && n.start === 0 && n.end === PPQ * 6));
   assert(!song.notes.some((n) => n.trackId !== lead.id && n.start < PPQ * 2 && n.end > PPQ));
   assert(song.notes.some((n) => n.trackId !== lead.id && n.start === PPQ * 2));
@@ -556,14 +572,15 @@ await test('zero thin gain creates true silence in its interval', () => {
   });
   assert.equal(compile(p).notes.length, 0);
 });
-await test('restatement copies and clips source effects', () => {
+await test('言い直しは作成済みの跳びポを音符と休符として複製する', () => {
   let p = simple(),
     s = p.sections[0]!;
   p = insertJump(p, { sectionId: s.id, tick: PPQ }, PPQ, false);
   const r = insertRestatement(p, s.id, 0, PPQ * 4, s.id);
-  const effects = r.effects.filter((e) => e.at.sectionId === r.sections[0]!.id);
-  assert.equal(effects.length, 2);
-  assert.equal(effects[0]!.at.tick, PPQ);
+  assert.deepEqual(r.effects, []);
+  const notes = Object.values(r.sections[0]!.notes).flat();
+  assert(notes.some((n) => n.at === PPQ * 2));
+  assert(notes.every((n) => n.at + n.duration <= PPQ || n.at >= PPQ * 2));
   noErrors(r);
 });
 await test('tempo ramp cannot extend beyond the song', () => {

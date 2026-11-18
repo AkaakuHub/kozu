@@ -10,7 +10,7 @@ import type {
   Section,
   Track,
 } from './types.ts';
-import { chordPitches, degreePitch, inScale, mod, resolvePitch } from './theory.ts';
+import { chordPitches, inScale, mod, resolvePitch } from './theory.ts';
 export interface ProgressionPreset {
   id: string;
   name: string;
@@ -427,7 +427,7 @@ export function generateMelody(
   for (let base = 0; base < section.length; base += PPQ * 8) {
     type Path = { cost: number; pitches: number[]; last: number | null; repeat: number };
     let beam: Path[] = [{ cost: 0, pitches: [], last: previous, repeat: 0 }];
-    const slots: { at: number; duration: number; key: Key }[] = [];
+    const slots: { at: number; duration: number }[] = [];
     for (let i = 0; i < rhythm.length; i++) {
       const at = Math.round(base + rhythm[i]! * PPQ);
       if (at >= section.length) continue;
@@ -467,7 +467,7 @@ export function generateMelody(
           candidatesPaths.push({ cost, pitches: [...path.pitches, midi], last: midi, repeat });
         }
       beam = candidatesPaths.sort((a, b) => a.cost - b.cost).slice(0, 8);
-      slots.push({ at, duration, key });
+      slots.push({ at, duration });
     }
     const selected = beam[0];
     if (!selected) continue;
@@ -477,7 +477,7 @@ export function generateMelody(
         id: uid('note'),
         at: slot.at,
         duration: slot.duration,
-        pitch: degreePitch(midi, slot.key),
+        pitch: { kind: 'absolute', midi },
         velocity: Math.round(76 + random() * 16),
         origin: 'generated',
         locked: false,
