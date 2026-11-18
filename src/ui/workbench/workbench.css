@@ -165,7 +165,7 @@
   position: sticky;
   left: 0;
   z-index: 2;
-  flex: 0 0 188px;
+  flex: 0 0 248px;
   background: var(--surface);
   border-right: 1px solid var(--line);
 }
@@ -216,6 +216,7 @@
 }
 .track-mix {
   display: flex;
+  align-items: center;
 }
 .track-mix .tool-button {
   width: 26px;
@@ -401,32 +402,23 @@ body {
 }
 
 .volume-fader {
-  display: grid;
-  grid-template-columns: minmax(30px, auto) minmax(92px, 1fr) 40px;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  font:
-    13px system-ui,
-    sans-serif;
-}
-.volume-fader input {
-  width: 100%;
-  min-height: 38px;
   margin: 0;
   accent-color: var(--accent);
 }
-.volume-fader output {
-  text-align: end;
-  font-variant-numeric: tabular-nums;
+.track-mix .volume-fader {
+  width: 74px;
+  margin-inline: 4px;
 }
 .track-volume-popup {
-  padding: 8px 12px;
-  min-width: min(260px, 95vw);
-}
-.track-volume-popup > div {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+}
+.track-volume-popup .volume-fader {
+  flex: 1;
+  min-width: 0;
+  min-height: 36px;
 }
 .anchored-popup {
   position: fixed;
@@ -446,8 +438,7 @@ body {
     13px system-ui,
     sans-serif;
 }
-.app-menu-item,
-.track-volume-popup button {
+.app-menu-item {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -466,8 +457,7 @@ body {
   width: 100%;
 }
 .app-menu-item:focus-visible,
-.app-menu-item:hover:not(:disabled),
-.track-volume-popup button[aria-pressed='true'] {
+.app-menu-item:hover:not(:disabled) {
   outline: none;
   background: var(--raised);
 }
@@ -497,7 +487,10 @@ body {
 }
 @media (pointer: coarse) {
   .app-menu-item,
-  .track-volume-popup button {
+  .track-volume-popup .tool-button {
     min-height: 42px;
+  }
+  .track-volume-popup .tool-button {
+    min-width: 42px;
   }
 }

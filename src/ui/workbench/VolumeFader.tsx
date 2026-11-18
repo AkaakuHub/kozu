@@ -22,21 +22,19 @@ export function VolumeFader({
     change(next / 100);
   };
   return (
-    <label className="volume-fader">
-      <span>{label}</span>
-      <input
-        type="range"
-        min={0}
-        max={100}
-        step={1}
-        value={volume}
-        aria-valuetext={`${volume}%`}
-        onChange={(event) => setVolume(event.target.valueAsNumber)}
-        onPointerUp={(event) => apply(event.currentTarget.valueAsNumber)}
-        onKeyUp={(event) => apply(event.currentTarget.valueAsNumber)}
-        onBlur={(event) => apply(event.currentTarget.valueAsNumber)}
-      />
-      <output>{volume}%</output>
-    </label>
+    <input
+      className="volume-fader"
+      aria-label={label}
+      type="range"
+      min={0}
+      max={100}
+      step={1}
+      value={volume}
+      aria-valuetext={`${volume}%`}
+      onChange={(event) => setVolume(event.target.valueAsNumber)}
+      onPointerUp={(event) => apply(event.currentTarget.valueAsNumber)}
+      onKeyUp={(event) => apply(event.currentTarget.valueAsNumber)}
+      onBlur={(event) => apply(event.currentTarget.valueAsNumber)}
+    />
   );
 }

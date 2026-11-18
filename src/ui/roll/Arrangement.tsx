@@ -1,7 +1,7 @@
-import { memo, useState } from 'react';
-import { TrackVolumePopup } from '../workbench/TrackVolumePopup.tsx';
+import { memo, useLayoutEffect, useRef, useState } from 'react';
+import { TrackMixControls, TrackVolumePopup } from '../workbench/TrackVolumePopup.tsx';
 import { ToolButton } from '../workbench/ToolButton.tsx';
-import { Volume2, VolumeX } from 'lucide-react';
+import { SlidersHorizontal } from 'lucide-react';
 import { PPQ } from '../../core/types.ts';
 import type { Project, RenderedNote } from '../../core/types.ts';
 import { ResizeHandle } from '../workbench/ResizeHandle.tsx';
@@ -34,11 +34,29 @@ export const Arrangement = memo(function Arrangement({
 }: Props) {
   const [popup, setPopup] = useState<{ id: string; anchor: HTMLElement } | null>(null);
   const popupTrack = project.tracks.find((track) => track.id === popup?.id);
+  const labels = useRef<HTMLDivElement>(null);
+  const [mixLayout, setMixLayout] = useState<'compact' | 'buttons' | 'full'>('compact');
   const [previewWidth, setWidth] = useState<number>();
   const [previewHeight, setHeight] = useState<number>();
   const small = matchMedia('(max-width: 680px)').matches;
   const width = previewWidth ?? preferences.trackWidth;
   const height = previewHeight ?? preferences.arrangementHeight;
+  const showButtons = mixLayout !== 'compact';
+  const showFader = mixLayout === 'full';
+  useLayoutEffect(() => {
+    const column = labels.current;
+    if (!column) return;
+    const measure = () => {
+      const width = column.clientWidth;
+      const layout = width >= 220 ? 'full' : width >= 150 ? 'buttons' : 'compact';
+      setMixLayout(layout);
+      if (layout === 'full') setPopup(null);
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(column);
+    measure();
+    return () => observer.disconnect();
+  }, []);
   const occupied = new Map<string, Set<number>>();
   for (const { trackId: id, start } of notes) {
     let bins = occupied.get(id);
@@ -50,6 +68,10 @@ export const Arrangement = memo(function Arrangement({
       const track = next.tracks.find((item) => item.id === id)!;
       track[key] = !track[key];
     });
+  const volume = (id: string, gain: number) =>
+    change((next) => {
+      next.tracks.find((track) => track.id === id)!.gain = gain;
+    });
   return (
     <div className="arrangement-pane">
       <section
@@ -59,6 +81,7 @@ export const Arrangement = memo(function Arrangement({
       >
         <div
           className="arrangement-labels"
+          ref={labels}
           style={width ? { flexBasis: `min(${width}px, 58vw)` } : undefined}
         >
           <div className="arrangement-heading">トラック</div>
@@ -73,20 +96,29 @@ export const Arrangement = memo(function Arrangement({
                 {track.name}
               </button>
               <span className="track-mix">
-                <ToolButton
-                  icon={track.mute ? VolumeX : Volume2}
-                  popup="dialog"
-                  popupTarget={popup?.id === track.id ? 'track-volume-popup' : undefined}
-                  label={`${track.name}の音量ミキサー`}
-                  tooltip={`音量 ${Math.round(track.gain * 100)}%`}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    const anchor = event.currentTarget;
-                    setPopup((current) =>
-                      current?.id === track.id ? null : { id: track.id, anchor },
-                    );
-                  }}
+                <TrackMixControls
+                  track={track}
+                  showButtons={showButtons}
+                  showFader={showFader}
+                  toggle={(key) => mix(track.id, key)}
+                  volume={(gain) => volume(track.id, gain)}
                 />
+                {!showFader && (
+                  <ToolButton
+                    icon={SlidersHorizontal}
+                    popup="dialog"
+                    popupTarget={popup?.id === track.id ? 'track-volume-popup' : undefined}
+                    label={`${track.name}の音量ミキサー`}
+                    tooltip={`音量 ${Math.round(track.gain * 100)}%`}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      const anchor = event.currentTarget;
+                      setPopup((current) =>
+                        current?.id === track.id ? null : { id: track.id, anchor },
+                      );
+                    }}
+                  />
+                )}
               </span>
             </div>
           ))}
@@ -94,7 +126,7 @@ export const Arrangement = memo(function Arrangement({
             axis="x"
             label="トラック列の幅"
             range={trackRange}
-            value={width ?? (small ? 104 : 188)}
+            value={width ?? (small ? 104 : 248)}
             preview={setWidth}
             commit={(trackWidth) => {
               setWidth(undefined);
@@ -174,13 +206,10 @@ export const Arrangement = memo(function Arrangement({
           track={popupTrack}
           anchor={popup.anchor}
           close={() => setPopup((current) => (current === popup ? null : current))}
-          volume={(gain) =>
-            change((project) => {
-              project.tracks.find((track) => track.id === popupTrack.id)!.gain = gain;
-            })
-          }
-          mute={() => mix(popupTrack.id, 'mute')}
-          solo={() => mix(popupTrack.id, 'solo')}
+          volume={(gain) => volume(popupTrack.id, gain)}
+          toggle={(key) => mix(popupTrack.id, key)}
+          showButtons={!showButtons}
+          showFader
         />
       )}
     </div>

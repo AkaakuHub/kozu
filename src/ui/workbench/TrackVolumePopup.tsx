@@ -1,40 +1,61 @@
+import { Headphones, VolumeX } from 'lucide-react';
 import type { Track } from '../../core/types.ts';
 import { AnchoredPopup } from './AnchoredPopup.tsx';
+import { ToolButton } from './ToolButton.tsx';
 import { VolumeFader } from './VolumeFader.tsx';
 
+interface MixControls {
+  track: Track;
+  volume: (gain: number) => void;
+  toggle: (key: 'mute' | 'solo') => void;
+  showButtons: boolean;
+  showFader: boolean;
+}
+
+export function TrackMixControls({ track, volume, toggle, showButtons, showFader }: MixControls) {
+  return (
+    <>
+      {showButtons && (
+        <>
+          <ToolButton
+            icon={VolumeX}
+            label={`${track.name}をミュート`}
+            tooltip="ミュート"
+            pressed={track.mute}
+            onClick={() => toggle('mute')}
+          />
+          <ToolButton
+            icon={Headphones}
+            label={`${track.name}をソロ`}
+            tooltip="ソロ"
+            pressed={track.solo}
+            onClick={() => toggle('solo')}
+          />
+        </>
+      )}
+      {showFader && <VolumeFader gain={track.gain} label={`${track.name}の音量`} change={volume} />}
+    </>
+  );
+}
+
 export function TrackVolumePopup({
-  track,
   anchor,
   close,
-  volume,
-  mute,
-  solo,
-}: {
-  track: Track;
+  ...controls
+}: MixControls & {
   anchor: HTMLElement;
   close: () => void;
-  volume: (gain: number) => void;
-  mute: () => void;
-  solo: () => void;
 }) {
   return (
     <AnchoredPopup
       id="track-volume-popup"
       role="dialog"
-      label={`${track.name}のミキサー`}
+      label={`${controls.track.name}のミキサー`}
       anchor={anchor}
       close={close}
     >
       <section className="track-volume-popup">
-        <VolumeFader gain={track.gain} label={`${track.name}の音量`} change={volume} />
-        <div>
-          <button type="button" aria-pressed={track.mute} onClick={mute}>
-            ミュート
-          </button>
-          <button type="button" aria-pressed={track.solo} onClick={solo}>
-            ソロ
-          </button>
-        </div>
+        <TrackMixControls {...controls} />
       </section>
     </AnchoredPopup>
   );
