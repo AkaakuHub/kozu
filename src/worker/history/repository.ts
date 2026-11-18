@@ -1,9 +1,10 @@
 import type { Project } from '../../core/types.ts';
 import { projectRows, rowsProject, scoreTables } from '../../core/history/score-rows.ts';
-import type { ScoreRow, ScoreRows, ScoreTable } from '../../core/history/score-rows.ts';
+import type { ScoreRow, ScoreRows } from '../../core/history/score-rows.ts';
 import { delta } from '../../core/history/revisions.ts';
 import type { ScoreBranch, ScoreCommit, ScorePull } from '../../core/history/revisions.ts';
 import { revisionQuery } from './revision-query.ts';
+import { revisionWrites } from './revision-writes.ts';
 
 export async function readHistory(db: D1Database, owner: string) {
   const [branches, commits, pulls] = await db.batch([
@@ -52,29 +53,6 @@ export async function loadScore(db: D1Database, owner: string, id: string) {
   return rows ? rowsProject(rows) : null;
 }
 
-function statements(db: D1Database, table: ScoreTable, rows: ScoreRow[], id: string) {
-  if (!rows.length) return [];
-  const columns = [...new Set(rows.flatMap((row) => Object.keys(row)))];
-  const query = `INSERT INTO ${table} (revision, ${columns.join(', ')})
-    SELECT ?, ${columns.map((column) => `json_extract(value, '$.${column}')`).join(', ')}
-    FROM json_each(?) WHERE EXISTS (SELECT 1 FROM score_commits WHERE id = ?)`;
-  // D1 limits each bound string to 2,000,000 bytes. Leave space for the JSON array delimiters.
-  const batches: string[][] = [[]];
-  const encoder = new TextEncoder();
-  let used = 2;
-  for (const row of rows) {
-    const item = JSON.stringify(row);
-    const size = encoder.encode(item).byteLength + 1;
-    if (used + size > 2_000_000) {
-      batches.push([]);
-      used = 2;
-    }
-    batches.at(-1)!.push(item);
-    used += size;
-  }
-  return batches.map((batch) => db.prepare(query).bind(id, `[${batch.join(',')}]`, id));
-}
-
 interface Save {
   owner: string;
   branch: string;
@@ -96,7 +74,9 @@ export async function appendCommit(
   const id = crypto.randomUUID();
   const createdAt = Date.now();
   const changes = scoreTables.flatMap((table) =>
-    statements(db, table, delta(table, before?.[table] ?? [], next[table]), id),
+    revisionWrites(table, delta(table, before?.[table] ?? [], next[table])).map(
+      ({ query, payload }) => db.prepare(query).bind(id, payload, id),
+    ),
   );
   if (!changes.length && !merge) return { error: '譜面に変更がありません。', status: 409 };
   const seed = db
