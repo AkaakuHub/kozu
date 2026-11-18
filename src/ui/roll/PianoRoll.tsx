@@ -1,5 +1,8 @@
 import { lazy, Suspense, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent, PointerEvent, RefObject } from 'react';
+import { MousePointer2, ScissorsLineDashed, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { AppMenu } from '../workbench/AppMenu.tsx';
+import { useContextGesture } from '../workbench/useContextGesture.ts';
 import { useRollGestures } from './useRollGestures.ts';
 import { RollRuler } from './RollRuler.tsx';
 import { RollTools } from './RollTools.tsx';
@@ -68,6 +71,7 @@ interface Drag {
   pitch: number;
   duration: number;
   lastPitch: number;
+  movement: { ticks: number; pitches: number };
 }
 const snap = (value: number, step: number) => Math.round(value / step) * step;
 
@@ -95,6 +99,7 @@ export function PianoRoll({
   commit,
 }: Props) {
   const [selected, select] = useState<string[]>([]);
+  const [context, setContext] = useState<{ id: string; anchor: HTMLDivElement } | null>(null);
   const [detail, setDetail] = useState(false);
   const [tool, setTool] = useState<RollTool>('select');
   const [step, setStep] = useState(PPQ / 4);
@@ -106,6 +111,7 @@ export function PianoRoll({
   const follow = useRef(true);
   const [range, setRange] = useState({ first: 0, last: PPQ * 24 });
   const drag = useRef<Drag | null>(null);
+  const nextDrag = useRef<{ id: string; mode: Drag['mode'] } | null>(null);
   const drawing = useRef<{
     pointer: number;
     anchor: number;
@@ -126,6 +132,15 @@ export function PianoRoll({
   const selectedIds = useMemo(() => new Set(selected), [selected]);
   const auto = autoClip(section, track);
   const selectedNote = notes.find((n) => n.id === selected.at(-1));
+  const contextNote = notes.find((note) => note.id === context?.id);
+  const openNoteContext = (anchor: HTMLDivElement) => {
+    const id = anchor.dataset.noteId;
+    if (!id) return;
+    drag.current = null;
+    setDelta({ ticks: 0, pitches: 0 });
+    setContext({ id, anchor });
+  };
+  const noteGesture = useContextGesture(openNoteContext);
   const keyFor = (at: number) => valueAt(song.keys, at).key;
   const pitchOf = (note: Note) => resolvePitch(note.pitch, keyFor(note.at));
   const editable = song.keys.length > 0;
@@ -165,6 +180,7 @@ export function PianoRoll({
   useLayoutEffect(() => {
     const view = viewport.current;
     if (view) view.scrollTop = Math.max(0, (127 - center) * row - view.clientHeight / 2);
+    nextDrag.current = null;
     select([]);
     setDetail(false);
   }, [track.id]);
@@ -303,8 +319,23 @@ export function PianoRoll({
     );
   };
   const keyboardEdit = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.target !== e.currentTarget || !editable) return;
+    if (e.defaultPrevented || !editable) return;
+    if (
+      e.target !== e.currentTarget &&
+      !(e.target instanceof HTMLElement && e.target.classList.contains('roll-note'))
+    )
+      return;
     const key = e.key.toLowerCase();
+    if ((key === 'contextmenu' || (e.shiftKey && key === 'f10')) && selectedNote) {
+      const anchor = [
+        ...e.currentTarget.querySelectorAll<HTMLDivElement>('.roll-note[data-selected=true]'),
+      ].find((element) => element.dataset.noteId === selectedNote.id);
+      if (anchor) {
+        e.preventDefault();
+        openNoteContext(anchor);
+      }
+      return;
+    }
     if (e.ctrlKey || e.metaKey) {
       if (key === 'a') select(notes.map((note) => note.id));
       else if (key === 'c' && selectedNote) copy();
@@ -357,6 +388,8 @@ export function PianoRoll({
     audition?.(pitch);
     viewport.current?.focus({ preventScroll: true });
     const end = e.currentTarget.getBoundingClientRect().right;
+    const override = nextDrag.current?.id === n.id ? nextDrag.current.mode : undefined;
+    nextDrag.current = null;
     drag.current = {
       id: n.id,
       x: e.clientX,
@@ -365,12 +398,14 @@ export function PianoRoll({
       pitch,
       duration: n.duration,
       lastPitch: pitch,
+      movement: { ticks: 0, pitches: 0 },
       mode:
-        tool === 'resize' ||
+        override ??
+        (tool === 'resize' ||
         (e.target instanceof Element && e.target.closest('.roll-note-resize')) ||
         (e.pointerType === 'mouse' && end - e.clientX < 8)
           ? 'resize'
-          : 'move',
+          : 'move'),
     };
     e.currentTarget.setPointerCapture(e.pointerId);
   };
@@ -428,7 +463,10 @@ export function PianoRoll({
       <RollTools
         track={track}
         tool={tool}
-        setTool={setTool}
+        setTool={(next) => {
+          nextDrag.current = null;
+          setTool(next);
+        }}
         auto={auto}
         valid={song.keys.length > 0}
         selected={Boolean(selectedNote)}
@@ -605,9 +643,15 @@ export function PianoRoll({
                   const midi = pitch + (preview?.mode === 'move' ? delta.pitches : 0);
                   return (
                     <div
+                      {...noteGesture}
                       key={note.id}
                       className="roll-note"
+                      data-note-id={note.id}
                       data-selected={active}
+                      tabIndex={-1}
+                      aria-haspopup="menu"
+                      aria-expanded={context?.id === note.id}
+                      role="button"
                       title={pitchName(pitch, false, true)}
                       style={{
                         left: at * px,
@@ -615,7 +659,10 @@ export function PianoRoll({
                         width: Math.max(4, length * px),
                         background: color,
                       }}
-                      onPointerDown={(e) => begin(e, note, pitch)}
+                      onPointerDown={(e) => {
+                        noteGesture.onPointerDown(e);
+                        begin(e, note, pitch);
+                      }}
                       onClick={(event) => {
                         event.stopPropagation();
                         if (!selected.includes(note.id) && !event.shiftKey) {
@@ -628,6 +675,7 @@ export function PianoRoll({
                         setDetail(true);
                       }}
                       onPointerMove={(e) => {
+                        noteGesture.onPointerMove(e);
                         const g = drag.current;
                         if (!g || g.id !== note.id) return;
                         const ticks = snap((e.clientX - g.x) / px, step);
@@ -657,6 +705,7 @@ export function PianoRoll({
                                 ),
                               };
                         const nextPitch = g.pitch + movement.pitches;
+                        g.movement = movement;
                         if (g.lastPitch !== nextPitch) {
                           g.lastPitch = nextPitch;
                           audition?.(nextPitch);
@@ -668,18 +717,23 @@ export function PianoRoll({
                         );
                       }}
                       onPointerUp={() => {
+                        noteGesture.onPointerUp();
                         const g = drag.current;
                         drag.current = null;
                         if (g?.id === note.id) {
-                          if (g.mode === 'resize' && delta.ticks)
+                          if (g.mode === 'resize' && g.movement.ticks)
                             patchNotes((n) =>
-                              n.id === g.id ? { duration: n.duration + delta.ticks } : undefined,
+                              n.id === g.id
+                                ? { duration: n.duration + g.movement.ticks }
+                                : undefined,
                             );
-                          if (g.mode === 'move') moveSelected(delta.ticks, delta.pitches, false);
+                          if (g.mode === 'move')
+                            moveSelected(g.movement.ticks, g.movement.pitches, false);
                         }
                         setDelta({ ticks: 0, pitches: 0 });
                       }}
                       onLostPointerCapture={() => {
+                        noteGesture.onPointerCancel();
                         drag.current = null;
                         setDelta({ ticks: 0, pitches: 0 });
                       }}
@@ -729,6 +783,47 @@ export function PianoRoll({
           </div>
         </div>
       </div>
+      {context && contextNote && (
+        <AppMenu
+          id="note-menu-popup"
+          anchor={context.anchor}
+          close={() => setContext((current) => (current === context ? null : current))}
+          groups={[
+            {
+              label: '音符',
+              commands: [
+                {
+                  label: '移動',
+                  icon: MousePointer2,
+                  run: () => {
+                    select([contextNote.id]);
+                    setTool('select');
+                    nextDrag.current = { id: contextNote.id, mode: 'move' };
+                  },
+                },
+                {
+                  label: '長さを変更',
+                  icon: ScissorsLineDashed,
+                  run: () => {
+                    select([contextNote.id]);
+                    setTool('resize');
+                    nextDrag.current = { id: contextNote.id, mode: 'resize' };
+                  },
+                },
+                {
+                  label: '音符を編集',
+                  icon: SlidersHorizontal,
+                  run: () => {
+                    select([contextNote.id]);
+                    setDetail(true);
+                  },
+                },
+                { label: '音符を削除', icon: Trash2, run: () => apply([contextNote], []) },
+              ],
+            },
+          ]}
+        />
+      )}
       {detail && selectedNote && editable && (
         <Suspense fallback={null}>
           <NoteDialog

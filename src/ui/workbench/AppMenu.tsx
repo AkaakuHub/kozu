@@ -5,15 +5,17 @@ export function AppMenu({
   anchor,
   close,
   groups,
+  id = 'app-menu-popup',
 }: {
   anchor: HTMLElement;
   close: () => void;
   groups: MenuGroup[];
+  id?: string;
 }) {
   return (
     <AnchoredPopup
       anchor={anchor}
-      id="app-menu-popup"
+      id={id}
       role="menu"
       label={groups.length === 1 ? groups[0]!.label : 'その他のメニュー'}
       close={close}

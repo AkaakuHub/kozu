@@ -8,6 +8,7 @@ interface Props {
   project: Project;
   current: string;
   change: (update: (p: Project) => void) => void;
+  requestDelete: (id: string) => void;
 }
 const KIND_NAMES: Record<TrackKind, string> = {
   melody: '手入力',
@@ -28,27 +29,11 @@ const PATTERNS: Record<Pattern, string> = {
   trap: 'トラップ',
   twoStep: '2ステップ',
 };
-export function Tracks({ project, current, change }: Props) {
+export function Tracks({ project, current, change, requestDelete }: Props) {
   const [selected, select] = useState(current);
   const track = project.tracks.find((track) => track.id === selected) ?? project.tracks[0]!;
   const update = (id: string, fn: (t: Track) => void) =>
     change((p) => fn(p.tracks.find((t) => t.id === id)!));
-  const remove = (id: string) => {
-    if (project.tracks.length <= 1 || !window.confirm('このトラックと、その音符を削除しますか？'))
-      return;
-    change((p) => {
-      p.tracks = p.tracks.filter((t) => t.id !== id);
-      for (const track of p.tracks) if (track.harmonySource === id) delete track.harmonySource;
-      for (const s of p.sections) delete s.notes[id];
-      p.effects = p.effects
-        .filter((e) => e.kind !== 'octave' || e.trackId !== id)
-        .map((e) => {
-          if ('tracks' in e) e.tracks = e.tracks.filter((t) => t !== id);
-          if (e.kind === 'thin') e.keepTracks = e.keepTracks.filter((t) => t !== id);
-          return e;
-        });
-    });
-  };
   return (
     <Stack gap={2}>
       <Button
@@ -69,7 +54,7 @@ export function Tracks({ project, current, change }: Props) {
           <Button
             color="error"
             disabled={project.tracks.length === 1}
-            onClick={() => remove(track.id)}
+            onClick={() => requestDelete(track.id)}
           >
             削除
           </Button>

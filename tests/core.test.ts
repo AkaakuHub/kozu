@@ -64,6 +64,31 @@ const noErrors = (p: ReturnType<typeof simple>) =>
     [],
   );
 await test('空の新規プロジェクトは編集可能な譜面として有効', () => noErrors(createBlankProject()));
+await test('トラックを削除すると全セクションの音符と参照を外し、最後の1本は残す', async () => {
+  const { removeTrack } = await import('../src/core/track-editing.ts');
+  const project = createBlankProject();
+  const [lead] = project.tracks;
+  const voice = { ...createTrack('melody'), harmonySource: lead!.id };
+  project.tracks.push(voice);
+  project.sections.push(createSection('終奏', PPQ * 4));
+  for (const section of project.sections) section.notes[lead!.id] = [makeNote(0, PPQ, 60)];
+  project.sections[1]!.notes[voice.id] = [makeNote(0, PPQ, 64)];
+  const at = { sectionId: project.sections[0]!.id, tick: 0 };
+  project.effects.push(
+    { id: 'transpose', kind: 'octave', at, trackId: lead!.id, duration: PPQ, semitones: 12 },
+    { id: 'break', kind: 'break', at, duration: PPQ, tracks: [lead!.id, voice.id] },
+  );
+  assert.equal(removeTrack(project, lead!.id), true);
+  assert.equal(removeTrack(project, voice.id), false);
+  assert.equal(project.tracks.length, 1);
+  assert.equal(voice.harmonySource, undefined);
+  assert.ok(project.sections.every((section) => !Object.hasOwn(section.notes, lead!.id)));
+  assert.equal(project.sections[1]!.notes[voice.id]?.length, 1);
+  assert.deepEqual(project.effects, [
+    { id: 'break', kind: 'break', at, duration: PPQ, tracks: [voice.id] },
+  ]);
+  noErrors(project);
+});
 await test('コミット後に編集して端末に保存しても未コミットと判定し、取り消すと判定が戻る', async () => {
   const { committedBranch, hasUncommittedChanges } =
     await import('../src/core/history/fingerprint.ts');

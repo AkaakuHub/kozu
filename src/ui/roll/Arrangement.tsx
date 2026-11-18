@@ -1,7 +1,9 @@
 import { memo, useLayoutEffect, useRef, useState } from 'react';
 import { TrackMixControls, TrackVolumePopup } from '../workbench/TrackVolumePopup.tsx';
 import { ToolButton } from '../workbench/ToolButton.tsx';
-import { SlidersHorizontal } from 'lucide-react';
+import { SlidersHorizontal, Trash2 } from 'lucide-react';
+import { AppMenu } from '../workbench/AppMenu.tsx';
+import { TrackName } from './TrackName.tsx';
 import { PPQ } from '../../core/types.ts';
 import type { Project, RenderedNote } from '../../core/types.ts';
 import type { TrackMix } from '../../core/track-mix.ts';
@@ -22,6 +24,7 @@ interface Props {
   updatePreferences: (preferences: Preferences) => void;
   changeMix: (id: string, patch: Partial<TrackMix>) => void;
   previewVolume: (id: string, gain: number) => void;
+  requestDelete: (id: string) => void;
 }
 export const Arrangement = memo(function Arrangement({
   project,
@@ -36,9 +39,12 @@ export const Arrangement = memo(function Arrangement({
   previewVolume,
   preferences,
   updatePreferences,
+  requestDelete,
 }: Props) {
   const [popup, setPopup] = useState<{ id: string; anchor: HTMLElement } | null>(null);
   const popupTrack = project.tracks.find((track) => track.id === popup?.id);
+  const [context, setContext] = useState<{ id: string; anchor: HTMLButtonElement } | null>(null);
+  const contextTrack = project.tracks.find((track) => track.id === context?.id);
   const labels = useRef<HTMLDivElement>(null);
   const [mixLayout, setMixLayout] = useState<'compact' | 'buttons' | 'full'>('compact');
   const [previewWidth, setWidth] = useState<number>();
@@ -85,14 +91,13 @@ export const Arrangement = memo(function Arrangement({
           <div className="arrangement-heading">トラック</div>
           {project.tracks.map((track) => (
             <div key={track.id} className="track-strip" data-active={trackId === track.id}>
-              <button
-                className="track-name"
-                type="button"
-                onClick={() => selectTrack(track.id)}
-                aria-pressed={trackId === track.id}
-              >
-                {track.name}
-              </button>
+              <TrackName
+                name={track.name}
+                selected={trackId === track.id}
+                expanded={context?.id === track.id}
+                select={() => selectTrack(track.id)}
+                open={(anchor) => setContext({ id: track.id, anchor })}
+              />
               <span className="track-mix">
                 <TrackMixControls
                   track={track}
@@ -203,6 +208,26 @@ export const Arrangement = memo(function Arrangement({
           updatePreferences({ arrangementHeight });
         }}
       />
+      {context && contextTrack && (
+        <AppMenu
+          id="track-menu-popup"
+          anchor={context.anchor}
+          close={() => setContext((current) => (current === context ? null : current))}
+          groups={[
+            {
+              label: contextTrack.name,
+              commands: [
+                {
+                  label: 'トラックを削除',
+                  icon: Trash2,
+                  disabled: project.tracks.length <= 1,
+                  run: () => requestDelete(contextTrack.id),
+                },
+              ],
+            },
+          ]}
+        />
+      )}
       {popupTrack && popup && !showFader && (
         <TrackVolumePopup
           key={popupTrack.id}

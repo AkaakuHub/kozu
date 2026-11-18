@@ -84,6 +84,7 @@ export function Windows({
   sectionMeasure,
   change,
   changeSection,
+  requestDelete,
   commit,
   setSelected,
   add,
@@ -108,6 +109,7 @@ export function Windows({
   sectionMeasure: number;
   change: (update: (p: Project) => void) => void;
   changeSection: (update: (s: Section, p: Project) => void) => void;
+  requestDelete: (id: string) => void;
   commit: (project: Project) => void;
   setSelected: (id: string) => void;
   add: (name: string, ticks: number, autoExtend: boolean) => void;
@@ -194,7 +196,14 @@ export function Windows({
               {view === 'harmony' && (
                 <Harmony project={project} section={section} change={changeSection} />
               )}
-              {view === 'tracks' && <Tracks project={project} current={track.id} change={change} />}
+              {view === 'tracks' && (
+                <Tracks
+                  project={project}
+                  current={track.id}
+                  change={change}
+                  requestDelete={requestDelete}
+                />
+              )}
               {view === 'instruments' && (
                 <InstrumentPicker
                   selected={track.program}

@@ -156,6 +156,8 @@
 }
 .arrangement-view {
   display: flex;
+  align-items: flex-start;
+  --arrangement-row-height: 27px;
   max-height: 204px;
   overflow: auto;
   border-bottom: 1px solid var(--line);
@@ -173,6 +175,7 @@
 .arrangement-heading,
 .arrangement-part > button:first-child {
   height: 30px;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   padding: 0 10px;
@@ -189,16 +192,21 @@
 }
 .track-strip,
 .arrangement-track {
-  height: 27px;
+  height: var(--arrangement-row-height);
+  flex: 0 0 auto;
   border-bottom: 1px solid var(--grid);
 }
 .track-name {
   flex: 1;
+  align-self: stretch;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
+  touch-action: pan-x pan-y;
+  user-select: none;
+  -webkit-touch-callout: none;
 }
 .track-name,
 .arrangement-part button {
@@ -326,13 +334,10 @@
   }
   .arrangement-view {
     max-height: 160px;
+    --arrangement-row-height: 25px;
   }
   .arrangement-labels {
     flex-basis: 104px;
-  }
-  .track-strip,
-  .arrangement-track {
-    height: 25px;
   }
   .arrangement-track span {
     top: 7px;

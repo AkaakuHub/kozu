@@ -25,6 +25,7 @@ import { exportMidi } from './core/midi.ts';
 import { hasUncommittedChanges } from './core/history/fingerprint.ts';
 import { defaultMasterGain } from './core/preferences.ts';
 import { rollSection } from './core/roll-timeline.ts';
+import { removeTrack } from './core/track-editing.ts';
 import { createSection } from './core/presets.ts';
 import { growSection, measureTicks } from './core/section-length.ts';
 import { sharesScore } from './core/track-mix.ts';
@@ -54,6 +55,11 @@ const ProjectForm = lazy(() =>
 const Windows = lazy(() =>
   import('./ui/workbench/Windows.tsx').then((module) => ({ default: module.Windows })),
 );
+const TrackDeleteDialog = lazy(() =>
+  import('./ui/workbench/TrackDeleteDialog.tsx').then(({ TrackDeleteDialog }) => ({
+    default: TrackDeleteDialog,
+  })),
+);
 
 export default function App() {
   const [message, notify] = useState('');
@@ -73,6 +79,7 @@ export default function App() {
   const [leaving, setLeaving] = useState(false);
   const [partId, setPart] = useState('');
   const [trackId, setTrack] = useState('');
+  const [deleteTrackId, requestDelete] = useState<string | null>(null);
   const [head, setHead] = useState(0);
   const [playback, setPlayback] = useState<'stopped' | 'loading' | 'playing'>('stopped');
   const [loop, setLoop] = useState(false);
@@ -94,6 +101,7 @@ export default function App() {
       : project.initialMeter,
   );
   const track = project.tracks.find((item) => item.id === trackId) ?? project.tracks[0]!;
+  const deleteTrack = project.tracks.find((item) => item.id === deleteTrackId);
   const hasErrors = song.diagnostics.some((item) => item.severity === 'error');
   const playing = playback === 'playing';
 
@@ -295,7 +303,7 @@ export default function App() {
       redo: () => session.redo?.(),
       loop: toggleLoop,
     },
-    windowName !== null || !session.ready || leaving,
+    windowName !== null || deleteTrackId !== null || !session.ready || leaving,
   );
   useEffect(() => {
     if (!message) return;
@@ -464,6 +472,7 @@ export default function App() {
         choose={choosePart}
         trackId={track.id}
         selectTrack={setTrack}
+        requestDelete={requestDelete}
         chooseInstrument={(id) => {
           setTrack(id);
           open('instruments');
@@ -589,6 +598,7 @@ export default function App() {
               commit={commit}
               change={change}
               changeSection={changeSection}
+              requestDelete={requestDelete}
               setSelected={(id) => {
                 setPart(id);
                 position(starts.get(id) ?? sectionStart);
@@ -597,6 +607,26 @@ export default function App() {
             />
           </Suspense>
         )}
+      {deleteTrack && (
+        <Suspense fallback={null}>
+          <TrackDeleteDialog
+            name={deleteTrack.name}
+            mode={colorMode}
+            close={() => requestDelete(null)}
+            remove={() => {
+              const next = clone(project);
+              if (removeTrack(next, deleteTrack.id)) {
+                if (track.id === deleteTrack.id) {
+                  const index = project.tracks.indexOf(deleteTrack);
+                  setTrack(next.tracks[Math.min(index, next.tracks.length - 1)]!.id);
+                }
+                commit(next);
+              }
+              requestDelete(null);
+            }}
+          />
+        </Suspense>
+      )}
       {message && (
         <div role="status" className="work-toast" onClick={() => notify('')}>
           {message}
