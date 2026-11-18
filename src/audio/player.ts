@@ -1,7 +1,8 @@
 import type { Smplr } from 'smplr';
-import type { CompiledSong, Project } from '../core/types.ts';
+import type { CompiledSong, Project, Track } from '../core/types.ts';
 import { audioTempoClock, playbackSeconds } from './clock.ts';
 import type { previewVoice } from './instruments.ts';
+import type { Audition } from './audition.ts';
 
 export class Player {
   private context: AudioContext | null = null;
@@ -13,6 +14,34 @@ export class Player {
     { audio: Smplr; pitches: Set<string | number> }
   >();
   private generation = 0;
+  private preview: Audition | null = null;
+  private previewRequest = 0;
+
+  private output(context: AudioContext) {
+    if (!this.master) {
+      this.master = context.createGain();
+      this.master.gain.value = 0.58;
+      this.master.connect(context.createDynamicsCompressor()).connect(context.destination);
+    }
+    return this.master;
+  }
+
+  async audition(track: Track, pitch: number) {
+    const request = ++this.previewRequest;
+    const context = (this.context ??= new AudioContext());
+    if (context.state !== 'running') await context.resume();
+    if (!this.preview) {
+      const { Audition } = await import('./audition.ts');
+      if (request !== this.previewRequest) return;
+      this.preview ??= new Audition(context, this.output(context));
+    }
+    if (request === this.previewRequest) await this.preview.play(track, pitch);
+  }
+
+  stopAudition() {
+    this.previewRequest++;
+    this.preview?.stop();
+  }
 
   async play(
     song: CompiledSong,
@@ -28,12 +57,7 @@ export class Player {
     await context.resume();
     const { loadInstrument, previewNotes, previewVoice } = await import('./instruments.ts');
     if (generation !== this.generation) return;
-    if (!this.master) {
-      this.master = context.createGain();
-      this.master.gain.value = 0.58;
-      const compressor = context.createDynamicsCompressor();
-      this.master.connect(compressor).connect(context.destination);
-    }
+    const output = this.output(context);
     const tracks = new Map(project.tracks.map((track) => [track.id, track]));
     const floor = loopStart ?? start;
     const source = song.notes.filter((note) => note.end > floor && note.start < end);
@@ -51,7 +75,7 @@ export class Player {
         if (!loaded || [...needed].some((pitch) => !loaded?.pitches.has(pitch))) {
           const pitches = new Set([...(loaded?.pitches ?? []), ...needed]);
           loaded?.audio.dispose();
-          loaded = { pitches, audio: loadInstrument(context, this.master!, voice, [...pitches]) };
+          loaded = { pitches, audio: loadInstrument(context, output, voice, [...pitches]) };
           this.instruments.set(voice, loaded);
         }
         try {
@@ -160,6 +184,8 @@ export class Player {
 
   async dispose() {
     this.stop();
+    this.stopAudition();
+    this.preview = null;
     for (const instrument of this.instruments.values()) instrument.audio.dispose();
     this.instruments.clear();
     const context = this.context;

@@ -53,6 +53,7 @@ export default function App() {
   const { preferences, update: updatePreferences } = usePreferences(notify);
   const appearance = preferences.appearance ?? 'system';
   const scaleGuide = preferences.scaleGuide ?? true;
+  const notePreview = preferences.notePreview ?? true;
   const colorMode = useAppearance(appearance);
   const { project, commit } = session;
   const [timelineTick, setTimelineTick] = useState(0);
@@ -77,6 +78,10 @@ export default function App() {
   const track = project.tracks.find((item) => item.id === trackId) ?? project.tracks[0]!;
   const hasErrors = song.diagnostics.some((item) => item.severity === 'error');
   const playing = playback === 'playing';
+
+  useEffect(() => {
+    return () => player.stopAudition();
+  }, [player, track.id, track.program, track.guitar.output, notePreview]);
 
   const change = (update: (project: Project) => void) => {
     const next = clone(project);
@@ -104,7 +109,10 @@ export default function App() {
   useEffect(() => {
     const instance = player;
     const visibility = () => {
-      if (document.hidden) stop();
+      if (document.hidden) {
+        player.stopAudition();
+        stop();
+      }
     };
     document.addEventListener('visibilitychange', visibility);
     return () => {
@@ -418,6 +426,15 @@ export default function App() {
         start={sectionStart}
         song={draft}
         scaleGuide={scaleGuide}
+        audition={
+          notePreview
+            ? (pitch) => {
+                void player.audition(track, pitch).catch((error: unknown) => {
+                  notify(error instanceof Error ? error.message : '音を試聴できませんでした。');
+                });
+              }
+            : undefined
+        }
         playhead={head}
         cursorFrame={cursorFrame}
         cursorTick={realHead}
@@ -480,6 +497,8 @@ export default function App() {
             setAppearance={(value) => updatePreferences({ appearance: value })}
             scaleGuide={scaleGuide}
             setScaleGuide={(value) => updatePreferences({ scaleGuide: value })}
+            notePreview={notePreview}
+            setNotePreview={(value) => updatePreferences({ notePreview: value })}
             open={open}
             close={() => open(null)}
             project={project}

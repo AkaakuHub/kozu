@@ -27,6 +27,7 @@ interface Props {
   start: number;
   song: CompiledSong;
   scaleGuide: boolean;
+  audition: ((pitch: number) => void) | undefined;
   playhead: number;
   cursorTick: RefObject<number>;
   cursorFrame: RefObject<((tick: number) => void) | null>;
@@ -48,6 +49,7 @@ interface Drag {
   at: number;
   pitch: number;
   duration: number;
+  lastPitch: number;
 }
 const snap = (value: number, step: number) => Math.round(value / step) * step;
 
@@ -59,6 +61,7 @@ export function PianoRoll({
   start,
   song,
   scaleGuide,
+  audition,
   playhead,
   cursorFrame,
   cursorTick,
@@ -207,7 +210,7 @@ export function PianoRoll({
       );
   };
   const paste = () => stamp(clipboard, Math.max(0, snap(position, step)));
-  const moveSelected = (ticks: number, pitches: number) => {
+  const moveSelected = (ticks: number, pitches: number, preview = true) => {
     if (!ticks && !pitches) return;
     const group = notes.filter((n) => selected.includes(n.id));
     const midi = (n: Note) => resolvePitch(n.pitch, keyFor(n.at));
@@ -219,6 +222,8 @@ export function PianoRoll({
       ...group.map((n) => 127 - midi(n)),
       Math.max(pitches, ...group.map((n) => -midi(n))),
     );
+    if (preview && selectedNote && (boundedPitches || boundedTicks))
+      audition?.(midi(selectedNote) + boundedPitches);
     patchNotes((n) =>
       moveNote(
         n,
@@ -280,6 +285,7 @@ export function PianoRoll({
       return;
     }
     if (!selected.includes(n.id)) select([n.id]);
+    audition?.(pitch);
     viewport.current?.focus({ preventScroll: true });
     const end = e.currentTarget.getBoundingClientRect().right;
     drag.current = {
@@ -289,6 +295,7 @@ export function PianoRoll({
       at: n.at,
       pitch,
       duration: n.duration,
+      lastPitch: pitch,
       mode:
         tool === 'resize' || (e.pointerType === 'mouse' && end - e.clientX < 8) ? 'resize' : 'move',
     };
@@ -518,7 +525,10 @@ export function PianoRoll({
                       onPointerDown={(e) => begin(e, note, pitch)}
                       onClick={(event) => {
                         event.stopPropagation();
-                        if (!selected.includes(note.id) && !event.shiftKey) select([note.id]);
+                        if (!selected.includes(note.id) && !event.shiftKey) {
+                          select([note.id]);
+                          audition?.(pitch);
+                        }
                       }}
                       onDoubleClick={() => {
                         select([note.id]);
@@ -531,7 +541,7 @@ export function PianoRoll({
                         const pitches = Math.round((g.y - e.clientY) / row);
                         const group = notes.filter((n) => selected.includes(n.id));
                         const pitchOf = (n: Note) => resolvePitch(n.pitch, keyFor(n.at));
-                        setDelta(
+                        const movement =
                           g.mode === 'resize'
                             ? {
                                 ticks: Math.max(
@@ -549,7 +559,16 @@ export function PianoRoll({
                                   ...group.map((n) => 127 - pitchOf(n)),
                                   Math.max(pitches, ...group.map((n) => -pitchOf(n))),
                                 ),
-                              },
+                              };
+                        const nextPitch = g.pitch + movement.pitches;
+                        if (g.lastPitch !== nextPitch) {
+                          g.lastPitch = nextPitch;
+                          audition?.(nextPitch);
+                        }
+                        setDelta((previous) =>
+                          previous.ticks === movement.ticks && previous.pitches === movement.pitches
+                            ? previous
+                            : movement,
                         );
                       }}
                       onPointerUp={() => {
@@ -560,7 +579,7 @@ export function PianoRoll({
                             patchNotes((n) =>
                               n.id === g.id ? { duration: n.duration + delta.ticks } : {},
                             );
-                          if (g.mode === 'move') moveSelected(delta.ticks, delta.pitches);
+                          if (g.mode === 'move') moveSelected(delta.ticks, delta.pitches, false);
                         }
                         setDelta({ ticks: 0, pitches: 0 });
                       }}
@@ -575,18 +594,39 @@ export function PianoRoll({
                 })}
             <div ref={cursor} className="roll-playhead" />
           </div>
-          <div className="roll-keys" aria-hidden="true">
+          <div
+            className="roll-keys"
+            role="group"
+            aria-label="試聴用の鍵盤"
+            onKeyDown={(event) => {
+              const key = event.target;
+              if (!(key instanceof HTMLButtonElement)) return;
+              const next =
+                event.key === 'ArrowUp'
+                  ? key.previousElementSibling
+                  : event.key === 'ArrowDown'
+                    ? key.nextElementSibling
+                    : null;
+              if (!(next instanceof HTMLButtonElement)) return;
+              event.preventDefault();
+              next.focus();
+            }}
+          >
             {Array.from({ length: 128 }, (_, i) => {
               const midi = 127 - i;
               const name = pitchName(midi, false, true);
               return (
-                <div
+                <button
                   key={midi}
+                  type="button"
+                  disabled={!audition}
+                  tabIndex={midi === Math.min(127, Math.max(0, center)) ? 0 : -1}
+                  onClick={() => audition?.(midi)}
                   data-black={name.includes('♯')}
                   data-scale={guideKey !== null && inScale(midi, guideKey)}
                 >
                   {name}
-                </div>
+                </button>
               );
             })}
           </div>

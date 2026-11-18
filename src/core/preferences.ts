@@ -7,6 +7,7 @@ export interface Preferences {
   trackWidth?: number;
   arrangementHeight?: number;
   scaleGuide?: boolean;
+  notePreview?: boolean;
 }
 
 export function parsePreferences(value: unknown): Preferences {
@@ -20,6 +21,7 @@ export function parsePreferences(value: unknown): Preferences {
     else if (key === 'arrangementHeight' && dimensions(setting, arrangementRange))
       result.arrangementHeight = setting;
     else if (key === 'scaleGuide' && typeof setting === 'boolean') result.scaleGuide = setting;
+    else if (key === 'notePreview' && typeof setting === 'boolean') result.notePreview = setting;
     else throw new Error('設定値が範囲外です。');
   }
   return result;

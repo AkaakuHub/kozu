@@ -68,6 +68,8 @@ export function Windows({
   setAppearance,
   scaleGuide,
   setScaleGuide,
+  notePreview,
+  setNotePreview,
   open,
   close,
   project,
@@ -89,6 +91,8 @@ export function Windows({
   setAppearance: (value: Appearance) => void;
   scaleGuide: boolean;
   setScaleGuide: (value: boolean) => void;
+  notePreview: boolean;
+  setNotePreview: (value: boolean) => void;
   open: (name: WindowName) => void;
   close: () => void;
   project: Project;
@@ -220,6 +224,15 @@ export function Windows({
                       <Switch
                         checked={scaleGuide}
                         onChange={(_, checked) => setScaleGuide(checked)}
+                      />
+                    }
+                  />
+                  <FormControlLabel
+                    label="鍵盤と音符の試聴"
+                    control={
+                      <Switch
+                        checked={notePreview}
+                        onChange={(_, checked) => setNotePreview(checked)}
                       />
                     }
                   />

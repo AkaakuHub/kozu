@@ -178,23 +178,29 @@
   left: 0;
   z-index: 3;
   width: 52px;
-  pointer-events: none;
 }
-.roll-keys div {
+.roll-keys button {
+  width: 100%;
   height: 22px;
   display: grid;
   place-items: center;
   background: #e0e6ef;
+  border: 0;
   border-bottom: 1px solid #9cacc1;
+  padding: 0;
   color: #27354a;
   font:
     11px ui-monospace,
     monospace;
 }
-.roll-keys div[data-black='true'] {
+.roll-keys button[data-black='true'] {
   background: #1b2739;
   color: #edf4fc;
   border-color: #46566e;
+}
+.roll-keys button:not(:disabled):active {
+  background: var(--accent);
+  color: var(--onAccent);
 }
 
 @media (max-width: 680px) {
@@ -213,7 +219,7 @@
     width: 65px;
   }
 }
-.roll-keys div[data-scale='true'] {
+.roll-keys button[data-scale='true'] {
   box-shadow: inset 3px 0 #68a896;
 }
 @media (max-width: 680px) {
