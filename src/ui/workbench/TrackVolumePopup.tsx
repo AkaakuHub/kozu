@@ -1,4 +1,4 @@
-import { Headphones, VolumeX } from 'lucide-react';
+import { Headphones, Piano, VolumeX } from 'lucide-react';
 import type { Track } from '../../core/types.ts';
 import { AnchoredPopup } from './AnchoredPopup.tsx';
 import { ToolButton } from './ToolButton.tsx';
@@ -41,10 +41,12 @@ export function TrackMixControls({ track, volume, toggle, showButtons, showFader
 export function TrackVolumePopup({
   anchor,
   close,
+  chooseInstrument,
   ...controls
 }: MixControls & {
   anchor: HTMLElement;
   close: () => void;
+  chooseInstrument: (() => void) | undefined;
 }) {
   return (
     <AnchoredPopup
@@ -56,6 +58,9 @@ export function TrackVolumePopup({
     >
       <section className="track-volume-popup">
         <TrackMixControls {...controls} />
+        {chooseInstrument && (
+          <ToolButton icon={Piano} label="音源ライブラリ" onClick={chooseInstrument} />
+        )}
       </section>
     </AnchoredPopup>
   );

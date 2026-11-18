@@ -35,6 +35,9 @@ const Harmony = lazy(() =>
   import('../Harmony.tsx').then((module) => ({ default: module.Harmony })),
 );
 const Tracks = lazy(() => import('../Tracks.tsx').then((module) => ({ default: module.Tracks })));
+const InstrumentPicker = lazy(() =>
+  import('./InstrumentPicker.tsx').then((module) => ({ default: module.InstrumentPicker })),
+);
 const TechniqueDialog = lazy(() =>
   import('../TechniqueDialog.tsx').then((module) => ({ default: module.TechniqueDialog })),
 );
@@ -46,7 +49,8 @@ const titles = {
   composition: '曲の構成',
   harmony: 'コード進行',
   progressions: 'コード進行ライブラリ',
-  tracks: '楽器の設定',
+  tracks: 'トラック設定',
+  instruments: '音源ライブラリ',
   diagnostics: '曲の検証',
   settings: '設定',
   technique: '作曲技法',
@@ -191,6 +195,20 @@ export function Windows({
                 <Harmony project={project} section={section} change={changeSection} />
               )}
               {view === 'tracks' && <Tracks project={project} current={track.id} change={change} />}
+              {view === 'instruments' && (
+                <InstrumentPicker
+                  selected={track.program}
+                  choose={(program) => {
+                    if (program !== track.program)
+                      change((next) => {
+                        const target = next.tracks.find(({ id }) => id === track.id)!;
+                        if (program === undefined) delete target.program;
+                        else target.program = program;
+                      });
+                    close();
+                  }}
+                />
+              )}
               {view === 'diagnostics' &&
                 (song.diagnostics.length ? (
                   <ul>

@@ -1,6 +1,6 @@
 import { Instrument, SampleLoader } from 'smplr';
 import type { Smplr, SmplrPreset, SmplrRegion } from 'smplr';
-import { instruments } from '../core/instruments.ts';
+import { instrumentSample } from '../core/instrument-catalog.ts';
 import { pitchName } from '../core/theory.ts';
 import type { Track } from '../core/types.ts';
 
@@ -74,10 +74,7 @@ export function loadInstrument(
       groups: [{ regions: samples }],
     });
   }
-  const instrument =
-    typeof voice === 'number'
-      ? instruments.find((item) => item.program === voice)!.sample
-      : programs[voice];
+  const instrument = typeof voice === 'number' ? instrumentSample(voice) : programs[voice];
   const regions = pitches
     .filter((pitch) => typeof pitch === 'number')
     .map((pitch): SmplrRegion => {

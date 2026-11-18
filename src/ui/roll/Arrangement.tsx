@@ -16,6 +16,7 @@ interface Props {
   choose: (id: string) => void;
   trackId: string;
   selectTrack: (id: string) => void;
+  chooseInstrument: (id: string) => void;
   preferences: Preferences;
   updatePreferences: (preferences: Preferences) => void;
   change: (update: (project: Project) => void) => void;
@@ -28,6 +29,7 @@ export const Arrangement = memo(function Arrangement({
   choose,
   trackId,
   selectTrack,
+  chooseInstrument,
   change,
   preferences,
   updatePreferences,
@@ -50,7 +52,6 @@ export const Arrangement = memo(function Arrangement({
       const width = column.clientWidth;
       const layout = width >= 220 ? 'full' : width >= 150 ? 'buttons' : 'compact';
       setMixLayout(layout);
-      if (layout === 'full') setPopup(null);
     };
     const observer = new ResizeObserver(measure);
     observer.observe(column);
@@ -103,13 +104,12 @@ export const Arrangement = memo(function Arrangement({
                   toggle={(key) => mix(track.id, key)}
                   volume={(gain) => volume(track.id, gain)}
                 />
-                {!showFader && (
+                {(!showFader || track.kind !== 'drums') && (
                   <ToolButton
                     icon={SlidersHorizontal}
                     popup="dialog"
                     popupTarget={popup?.id === track.id ? 'track-volume-popup' : undefined}
-                    label={`${track.name}の音量ミキサー`}
-                    tooltip={`音量 ${Math.round(track.gain * 100)}%`}
+                    label={`${track.name}の操作`}
                     onClick={(event) => {
                       event.preventDefault();
                       const anchor = event.currentTarget;
@@ -200,7 +200,7 @@ export const Arrangement = memo(function Arrangement({
           updatePreferences({ arrangementHeight });
         }}
       />
-      {popupTrack && popup && (
+      {popupTrack && popup && (!showFader || popupTrack.kind !== 'drums') && (
         <TrackVolumePopup
           key={popupTrack.id}
           track={popupTrack}
@@ -209,7 +209,15 @@ export const Arrangement = memo(function Arrangement({
           volume={(gain) => volume(popupTrack.id, gain)}
           toggle={(key) => mix(popupTrack.id, key)}
           showButtons={!showButtons}
-          showFader
+          showFader={!showFader}
+          chooseInstrument={
+            popupTrack.kind === 'drums'
+              ? undefined
+              : () => {
+                  setPopup(null);
+                  chooseInstrument(popupTrack.id);
+                }
+          }
         />
       )}
     </div>

@@ -329,7 +329,7 @@ export default function App() {
           },
           {
             label: 'トラック',
-            commands: [{ label: '楽器の設定', icon: Guitar, run: () => open('tracks') }],
+            commands: [{ label: 'トラック設定', icon: Guitar, run: () => open('tracks') }],
           },
           {
             label: '作曲',
@@ -413,6 +413,10 @@ export default function App() {
         choose={choosePart}
         trackId={track.id}
         selectTrack={setTrack}
+        chooseInstrument={(id) => {
+          setTrack(id);
+          open('instruments');
+        }}
         preferences={preferences}
         updatePreferences={updatePreferences}
         change={change}

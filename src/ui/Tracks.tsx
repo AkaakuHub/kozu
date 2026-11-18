@@ -1,4 +1,3 @@
-import { instruments, isInstrumentProgram } from '../core/instruments.ts';
 import { useState } from 'react';
 import { Alert, Button, Divider, MenuItem, Stack, TextField } from '@mui/material';
 import type { Pattern, Project, Track, TrackKind } from '../core/types.ts';
@@ -102,31 +101,6 @@ export function Tracks({ project, current, change }: Props) {
             onChange={(e) => update(track.id, (t) => (t.name = e.target.value))}
             fullWidth
           />
-          {track.kind !== 'drums' && (
-            <TextField
-              select
-              label="楽器音色"
-              value={track.program ?? 'auto'}
-              fullWidth
-              onChange={(event) => {
-                const value = event.target.value;
-                update(track.id, (next) => {
-                  if (value === 'auto') delete next.program;
-                  else if (isInstrumentProgram(Number(value))) {
-                    const program = Number(value);
-                    if (isInstrumentProgram(program)) next.program = program;
-                  }
-                });
-              }}
-            >
-              <MenuItem value="auto">トラックの既定音色</MenuItem>
-              {instruments.map((instrument) => (
-                <MenuItem key={instrument.program} value={instrument.program}>
-                  {instrument.name}
-                </MenuItem>
-              ))}
-            </TextField>
-          )}
           <Fields>
             <TextField
               select
