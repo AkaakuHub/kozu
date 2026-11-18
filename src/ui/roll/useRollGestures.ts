@@ -46,6 +46,12 @@ export function useRollGestures(
     let last: Point | null = null;
     let gap = 0;
     let singleEdits = false;
+    let suppressTap = false;
+    const beginPan = () => {
+      if (suppressTap) return;
+      suppressTap = true;
+      cancel();
+    };
     const scrollPoint = (event: MouseEvent) => event.clientX - view.getBoundingClientRect().left;
     const wheel = (event: WheelEvent) => {
       if (!event.ctrlKey && !event.metaKey) {
@@ -61,15 +67,18 @@ export function useRollGestures(
       apply(level.current * Math.exp(-event.deltaY * 0.012), scrollPoint(event), 0);
     };
     const start = (event: TouchEvent) => {
-      const [a, b] = Array.from(event.touches);
+      if (!last && !(event.target instanceof Node && view.contains(event.target))) return;
+      const a = event.touches[0],
+        b = event.touches[1];
       if (!a) return;
       if (b) {
-        cancel();
+        beginPan();
         last = middle(a, b);
         gap = distance(a, b);
         singleEdits = false;
         event.preventDefault();
       } else {
+        suppressTap = false;
         last = { x: a.clientX, y: a.clientY };
         singleEdits =
           event.target instanceof Element &&
@@ -78,12 +87,14 @@ export function useRollGestures(
       }
     };
     const move = (event: TouchEvent) => {
-      const [a, b] = Array.from(event.touches);
+      const a = event.touches[0],
+        b = event.touches[1];
       if (!a || !last || (singleEdits && !b)) return;
       const point = b ? middle(a, b) : { x: a.clientX, y: a.clientY };
       const dx = point.x - last.x;
       const dy = point.y - last.y;
       if (!b && Math.abs(dx) + Math.abs(dy) < 4) return;
+      beginPan();
       event.preventDefault();
       view.scrollTop -= dy;
       if (b) {
@@ -95,21 +106,38 @@ export function useRollGestures(
       last = point;
     };
     const end = (event: TouchEvent) => {
-      const first = event.touches[0];
-      last = first ? { x: first.clientX, y: first.clientY } : null;
-      gap = 0;
+      if (!last) return;
+      if (suppressTap && event.cancelable) event.preventDefault();
+      const a = event.touches[0],
+        b = event.touches[1];
+      last = a ? (b ? middle(a, b) : { x: a.clientX, y: a.clientY }) : null;
+      gap = a && b ? distance(a, b) : 0;
+    };
+    const pointerDown = (event: PointerEvent) => {
+      if (event.pointerType !== 'touch' && !last) suppressTap = false;
+    };
+    const blockTap = (event: MouseEvent) => {
+      if (!suppressTap || (event.type === 'click' && event.detail === 0)) return;
+      event.preventDefault();
+      event.stopPropagation();
     };
     view.addEventListener('wheel', wheel, { passive: false });
-    view.addEventListener('touchstart', start, { passive: false });
+    view.addEventListener('pointerdown', pointerDown, true);
+    view.addEventListener('click', blockTap, true);
+    view.addEventListener('contextmenu', blockTap, true);
+    document.addEventListener('touchstart', start, { passive: false, capture: true });
     view.addEventListener('touchmove', move, { passive: false });
-    view.addEventListener('touchend', end);
-    view.addEventListener('touchcancel', end);
+    document.addEventListener('touchend', end, { passive: false, capture: true });
+    document.addEventListener('touchcancel', end, true);
     return () => {
       view.removeEventListener('wheel', wheel);
-      view.removeEventListener('touchstart', start);
+      view.removeEventListener('pointerdown', pointerDown, true);
+      view.removeEventListener('click', blockTap, true);
+      view.removeEventListener('contextmenu', blockTap, true);
+      document.removeEventListener('touchstart', start, true);
       view.removeEventListener('touchmove', move);
-      view.removeEventListener('touchend', end);
-      view.removeEventListener('touchcancel', end);
+      document.removeEventListener('touchend', end, true);
+      document.removeEventListener('touchcancel', end, true);
     };
   }, [viewport]);
 }

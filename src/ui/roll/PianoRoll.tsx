@@ -134,12 +134,6 @@ export function PianoRoll({
   const [draftNote, setDraftNote] = useState<{ at: number; duration: number; midi: number } | null>(
     null,
   );
-  useRollGestures(viewport, keyboard, zoom, setZoom, () => {
-    drag.current = null;
-    drawing.current = null;
-    setDraftNote(null);
-    setDelta({ ticks: 0, pitches: 0 });
-  });
   const notes = useMemo(() => trackNotes(project, track.id, starts), [project, track.id, starts]);
   const sustainPoints = useMemo(
     () =>
@@ -163,6 +157,14 @@ export function PianoRoll({
     setContext({ id, anchor });
   };
   const noteGesture = useContextGesture(openNoteContext);
+  useRollGestures(viewport, keyboard, zoom, setZoom, () => {
+    noteGesture.onPointerCancel();
+    drag.current = null;
+    drawing.current = null;
+    setContext(null);
+    setDraftNote(null);
+    setDelta({ ticks: 0, pitches: 0 });
+  });
   const keyFor = (at: number) => valueAt(song.keys, at).key;
   const pitchOf = (note: Note) => resolvePitch(note.pitch, keyFor(note.at));
   const editable = song.keys.length > 0;
