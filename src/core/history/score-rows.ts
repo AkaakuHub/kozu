@@ -38,6 +38,14 @@ function decodePitch(row: ScoreRow, prefix = '') {
 }
 function events(project: Project): ScoreRow[] {
   return [
+    ...(project.markers ?? []).map((e, pos) => ({
+      id: e.id,
+      pos,
+      kind: 'marker',
+      section_id: e.at.sectionId,
+      tick: e.at.tick,
+      label: e.label,
+    })),
     ...project.tempoChanges.map((e, pos) => ({
       id: e.id,
       pos,
@@ -236,10 +244,14 @@ export function rowsProject(rows: ScoreRows): Project {
   const clipGroup = group(rows.score_clips, ['section_id']);
   const effectGroup = group(rows.score_effect_tracks, ['effect_id']);
   const sortedEvents = rows.score_events.toSorted(byPosition);
+  const markers = sortedEvents
+    .filter((row) => row.kind === 'marker')
+    .map((row) => ({ id: row.id, at: position(row), label: row.label }));
   const combined = {
     schemaVersion: 2,
     title: header.title,
     seed: header.seed,
+    ...(markers.length ? { markers } : {}),
     initialTempo: header.tempo,
     initialKey: key(header),
     initialMeter: meter(header),
@@ -319,7 +331,9 @@ export function rowsProject(rows: ScoreRows): Project {
       .filter((r) => r.kind === 'meter')
       .map((r) => ({ id: r.id, at: position(r), ...meter(r) })),
     effects: sortedEvents
-      .filter((r) => r.kind !== 'tempo' && r.kind !== 'key' && r.kind !== 'meter')
+      .filter(
+        (r) => r.kind !== 'tempo' && r.kind !== 'key' && r.kind !== 'meter' && r.kind !== 'marker',
+      )
       .map((r) => {
         const tracks = effectGroup(r.id)
           .toSorted(byPosition)

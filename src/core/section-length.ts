@@ -12,7 +12,7 @@ export function minimumSectionLength(project: Project, section: Section): number
   for (const clip of Object.values(section.notes))
     for (const note of clip) end = Math.max(end, note.at + note.duration);
   for (const chord of section.chords) end = Math.max(end, chord.at + chord.duration);
-  for (const event of [...project.keyChanges, ...project.meterChanges])
+  for (const event of [...project.keyChanges, ...project.meterChanges, ...(project.markers ?? [])])
     if (event.at.sectionId === section.id) end = Math.max(end, event.at.tick + 1);
   for (const event of project.tempoChanges)
     if (event.at.sectionId === section.id)

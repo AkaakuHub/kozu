@@ -155,6 +155,7 @@ export interface Project {
   sections: Section[];
   tracks: Track[];
   tempoChanges: TempoChange[];
+  markers?: { id: string; at: Position; label: string }[];
   keyChanges: KeyChange[];
   meterChanges: MeterChange[];
   effects: Effect[];

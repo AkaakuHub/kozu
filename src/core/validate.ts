@@ -124,6 +124,13 @@ function projectShape(x: unknown): x is Project {
     !array(x.sections, section, 128) ||
     !array(x.tracks, track) ||
     !array(x.effects, effect, 512) ||
+    (x.markers !== undefined &&
+      !array(
+        x.markers,
+        (e) =>
+          object(e) && string(e.id) && pos(e.at) && string(e.label) && e.label.trim().length > 0,
+        512,
+      )) ||
     !array(
       x.tempoChanges,
       (e) =>
@@ -236,6 +243,7 @@ export function validate(project: Project): Diagnostic[] {
     ...project.keyChanges,
     ...project.meterChanges,
     ...project.effects,
+    ...(project.markers ?? []),
   ];
   if (new Set(events.map((e) => e.id)).size !== events.length)
     issue('error', 'duplicate-event', 'イベントのIDが重複しています。');

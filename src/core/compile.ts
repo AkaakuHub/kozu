@@ -25,6 +25,13 @@ export function compile(
   const starts = sectionStarts(project);
   const maps = timeline(project);
   const totalTicks = project.sections.reduce((sum, s) => sum + s.length, 0);
+  const markers = [
+    ...project.sections.map((section) => ({ tick: starts.get(section.id)!, label: section.name })),
+    ...(project.markers ?? []).map(({ at, label }) => ({
+      tick: absolutePosition(at, starts),
+      label,
+    })),
+  ].sort((a, b) => a.tick - b.tick);
   const routes = midiRouting(project.tracks);
   const anySolo = project.tracks.some((t) => t.solo);
   const active = project.tracks.filter(
@@ -201,6 +208,7 @@ export function compile(
       notes: notes.filter((n) => n.end > n.start),
       totalTicks,
       diagnostics,
+      markers,
     };
   // Accent rendering happens before break cutting, so a sustained chord can restart at the accent.
   for (const effect of absoluteEffects) {
@@ -337,6 +345,6 @@ export function compile(
     totalTicks,
     diagnostics,
     breaks,
-    markers: project.sections.map((s) => ({ tick: starts.get(s.id)!, label: s.name })),
+    markers,
   };
 }

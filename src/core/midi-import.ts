@@ -7,6 +7,7 @@ import { mod } from './theory.ts';
 import { PPQ, uid } from './types.ts';
 import type { Key, Note, Project } from './types.ts';
 import { validate } from './validate.ts';
+import { applyMidiMarkers } from './midi-layout.ts';
 
 function trackName(source: string) {
   try {
@@ -24,8 +25,7 @@ export function importMidi(bytes: Uint8Array, title: string): Project {
   if (!division || header.format > 1)
     throw new Error('SMF形式0または1のPPQファイルを選択してください。');
   const toTicks = (tick: number) => Math.round((tick * PPQ) / division);
-  const section = createSection(title);
-  section.chords = [];
+  const section = createSection(title, PPQ, null);
   const project: Project = {
     schemaVersion: 2,
     title,
@@ -41,6 +41,7 @@ export function importMidi(bytes: Uint8Array, title: string): Project {
     effects: [],
   };
   let last = 0;
+  const markers: { tick: number; label: string }[] = [];
   for (const events of tracks) {
     let elapsed = 0;
     const name = trackName(events.find((e) => e.type === 'trackName')?.text ?? '').trim();
@@ -52,6 +53,10 @@ export function importMidi(bytes: Uint8Array, title: string): Project {
       const tick = toTicks(elapsed);
       const at = { sectionId: section.id, tick };
       last = Math.max(last, tick);
+      if (event.type === 'marker') {
+        const label = trackName(event.text).trim();
+        if (label) markers.push({ tick, label });
+      }
       if (event.type === 'setTempo') {
         const bpm = 60_000_000 / event.microsecondsPerBeat;
         if (tick === 0) project.initialTempo = bpm;
@@ -129,6 +134,7 @@ export function importMidi(bytes: Uint8Array, title: string): Project {
       events.map((event) => event.at.tick + 1),
     ),
   );
+  applyMidiMarkers(project, markers);
   const errors = validate(project).filter((diagnostic) => diagnostic.severity === 'error');
   if (errors.length) throw new Error(errors[0]!.message);
   return project;

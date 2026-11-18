@@ -1,6 +1,7 @@
 import { chordName } from '../../core/theory.ts';
 import { PPQ } from '../../core/types.ts';
 import type { Chord, Key, Project, Section } from '../../core/types.ts';
+import { Flag } from 'lucide-react';
 
 interface Props {
   project: Project;
@@ -102,6 +103,26 @@ export function RollRuler({
             {part.name}
           </button>
         ))}
+        {(project.markers ?? []).map(({ id, at, label }) => {
+          const tick = starts.get(at.sectionId)! + at.tick;
+          if (tick < range.first || tick > range.last) return null;
+          return (
+            <button
+              type="button"
+              key={id}
+              className="roll-marker"
+              title={label}
+              aria-label={label}
+              style={{ left: tick * px }}
+              onClick={(event) => {
+                event.stopPropagation();
+                seek(tick);
+              }}
+            >
+              <Flag size={13} aria-hidden="true" />
+            </button>
+          );
+        })}
         {Array.from(
           {
             length: Math.max(

@@ -1059,7 +1059,7 @@ void test('自動伴奏の編集用ノートはミュートと音量に左右さ
   assert.ok(compile(project).notes.every((note) => note.trackId !== track.id));
 });
 
-void test('SMF書き出しを読み戻すと音符、テンポ、拍子が復元される', async () => {
+void test('SMF書き出しを読み戻すと音符、テンポ、拍子、セクションが復元される', async () => {
   const { importMidi } = await import('../src/core/midi-import.ts');
   const source = scoreFixture();
   const expected = compile(source);
@@ -1082,9 +1082,50 @@ void test('SMF書き出しを読み戻すと音符、テンポ、拍子が復元
   }) => [start, pitch, end, velocity].join(',');
   assert.deepEqual(result.notes.map(signature).sort(), expected.notes.map(signature).sort());
   assert.deepEqual(result.meters, expected.meters);
+  assert.deepEqual(result.markers, expected.markers);
+  assert.deepEqual(
+    imported.sections.map((section) => section.name),
+    source.sections.map((section) => section.name),
+  );
   assert.deepEqual(
     result.tempos.map((point) => point.tick),
     expected.tempos.map((point) => point.tick),
+  );
+});
+
+await test('MIDIの鳴り続ける音を横切るマーカーは、音符を分割せず位置と名前を保持する', async () => {
+  const { importMidi } = await import('../src/core/midi-import.ts');
+  const { projectRows, rowsProject } = await import('../src/core/history/score-rows.ts');
+  const source = createBlankProject();
+  const first = source.sections[0]!;
+  first.name = 'イントロ';
+  first.length = PPQ * 4;
+  const last = createSection('サビ', PPQ * 4, null);
+  const lead = source.tracks[0]!;
+  const drums = createTrack('drums');
+  source.tracks.push(drums);
+  source.sections.push(last);
+  first.notes[lead.id] = [makeNote(0, PPQ * 3, 60)];
+  first.notes[drums.id] = [makeNote(0, PPQ / 8, 35)];
+  last.notes[drums.id] = [];
+  source.markers = [
+    { id: 'middle', at: { sectionId: first.id, tick: PPQ * 2 }, label: '持続音の途中' },
+  ];
+  source.tempoChanges = [
+    { id: 'tempo-chorus', at: { sectionId: last.id, tick: 0 }, bpm: 128, ramp: null },
+  ];
+  const song = compile(source);
+  const imported = importMidi(exportMidi(source, song), '読み込み');
+  assert.deepEqual(
+    imported.sections.map((section) => section.name),
+    ['イントロ', 'サビ'],
+  );
+  const result = compile(rowsProject(projectRows(imported)));
+  assert.deepEqual(result.markers, song.markers);
+  assert.deepEqual(result.tempos, song.tempos);
+  assert.deepEqual(
+    result.notes.map((note) => [note.pitch, note.start, note.end]),
+    song.notes.map((note) => [note.pitch, note.start, note.end]),
   );
 });
 

@@ -155,6 +155,10 @@ export function removeSection(project: Project, id: string): Project {
   p.tempoChanges = p.tempoChanges.filter((e) => e.at.sectionId !== id);
   p.keyChanges = p.keyChanges.filter((e) => e.at.sectionId !== id);
   p.meterChanges = p.meterChanges.filter((e) => e.at.sectionId !== id);
+  if (p.markers) {
+    p.markers = p.markers.filter((e) => e.at.sectionId !== id);
+    if (!p.markers.length) delete p.markers;
+  }
   p.effects = p.effects.filter((e) => e.at.sectionId !== id);
   for (const s of p.sections) if (s.sourceSectionId === id) s.sourceSectionId = null;
   return p;
@@ -195,6 +199,12 @@ export function duplicateSection(project: Project, id: string): Project {
       .map((e) => ({ ...clone(e), id: uid('key'), at: { ...e.at, sectionId: next.id } })),
   );
   const meter = valueAt(maps.meters, tick);
+  if (p.markers) {
+    const markers = p.markers.filter((e) => e.at.sectionId === id);
+    p.markers.push(
+      ...markers.map((e) => ({ ...e, id: uid('marker'), at: { ...e.at, sectionId: next.id } })),
+    );
+  }
   p.meterChanges.push(
     {
       id: uid('meter'),
